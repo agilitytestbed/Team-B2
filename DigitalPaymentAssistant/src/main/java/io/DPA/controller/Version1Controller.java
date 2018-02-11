@@ -15,10 +15,10 @@ import io.DPA.transaction.Transaction;
 
 
 @RestController
-public class TransactionController {
+@RequestMapping("/api/v1")
+public class Version1Controller {
 	
 	// ---------------- Transactions -----------------
-	
 	// GET
 	@RequestMapping("/transactions")
 	public List<Transaction> getAllTransactions() {
