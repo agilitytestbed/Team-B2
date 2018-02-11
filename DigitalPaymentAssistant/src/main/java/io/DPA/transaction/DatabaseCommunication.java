@@ -13,8 +13,7 @@ import java.util.List;
 public class DatabaseCommunication {
 	public static final String FILENAME = "data.db";
 	public static final String URL = 
-			"jdbc:sqlite:/Users/Zombarian/Documents/workspace-sts-3.9.2.RELEASE/"
-			+ "DigitalPaymentAssistant/"
+			"jdbc:sqlite:"
 			+ FILENAME;
 	
 	/**
@@ -101,7 +100,7 @@ public class DatabaseCommunication {
 	 * @return
 	 * 			List of transactions
 	 */
-	public static List<Transaction> getAllTransactions() {
+	public static List<Transaction> getAllTransactions(int offset, int limit) {
 		List<Transaction> transactions = new ArrayList<>();
 		
 		String sql = "SELECT * FROM transactions";
@@ -109,11 +108,14 @@ public class DatabaseCommunication {
 	         Statement stmnt  = conn.createStatement();
 			 ResultSet rs    = stmnt.executeQuery(sql)) {
 	            
-	            
+	        int element = 0;
 	        while (rs.next()) {
-	            transactions.add(new Transaction(rs.getInt("transactionID"), rs.getString("sender"),
-	            		rs.getString("receiver"), rs.getDouble("amount"), 
-	                	rs.getString("date"), rs.getInt("categoryID")));
+	        		if (element >= offset && transactions.size() < limit) {
+	        			transactions.add(new Transaction(rs.getInt("transactionID"), rs.getString("sender"),
+	        					rs.getString("receiver"), rs.getDouble("amount"), 
+	        					rs.getString("date"), rs.getInt("categoryID")));
+	        		}
+	        	element++;
 	        }
 	        return transactions;
 	    } catch (SQLException e) {
@@ -122,6 +124,8 @@ public class DatabaseCommunication {
 		return null;
 		
 	}
+	
+
 	
 	/**
 	 * Gets all the transaction that belong to the category with the given id.
@@ -228,7 +232,7 @@ public class DatabaseCommunication {
         }
 	}
 	
-	public static void assignCategory(Category c, int transactionID) {
+	public static void assignCategory(int categoryID, int transactionID) {
 		String sql = "UPDATE transactions SET categoryID = ?"
                 + "WHERE transactionID = ?";
  
@@ -236,7 +240,7 @@ public class DatabaseCommunication {
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
  
             // set the corresponding param
-            pstmt.setInt(1, c.getCategoryID());
+            pstmt.setInt(1, categoryID);
             pstmt.setInt(2, transactionID);
             // update 
             pstmt.executeUpdate();

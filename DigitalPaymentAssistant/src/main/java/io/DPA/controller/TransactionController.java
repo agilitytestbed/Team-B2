@@ -22,7 +22,12 @@ public class TransactionController {
 	// GET
 	@RequestMapping("/transactions")
 	public List<Transaction> getAllTransactions() {
-		return DatabaseCommunication.getAllTransactions();
+		return DatabaseCommunication.getAllTransactions(0, 20);
+	}
+	// GET - Offset and limit parameter
+	@RequestMapping(value = "/transactions", params = {"offset", "limit"})
+	public List<Transaction> getAllTransactions(@RequestParam("offset") int offset, @RequestParam("limit") int limit) {
+		return DatabaseCommunication.getAllTransactions(offset, limit);
 	}
 	// GET - Category parameter
 	@RequestMapping(value = "/transactions", params = "category")
@@ -54,11 +59,10 @@ public class TransactionController {
 		DatabaseCommunication.deleteTransaction(id);
 	}
 	
-	// PUT
-	//TODO make this a POST request
-	@RequestMapping(method = RequestMethod.PUT, value = "/transactions/{transactionID}/assignCategory")
-	public void assignCategory(@RequestBody Category category, @PathVariable int transactionID) {
-		DatabaseCommunication.assignCategory(category, transactionID);
+	// POST
+	@RequestMapping(method = RequestMethod.POST, value = "/transactions/{transactionID}/assignCategory", params = "category")
+	public void assignCategory(@RequestParam("category") int categoryID, @PathVariable int transactionID) {
+		DatabaseCommunication.assignCategory(categoryID, transactionID);
 	}
 	
 	// ---------------- Categories -----------------
