@@ -1,9 +1,9 @@
 Manifest-Version: 1.0
 Implementation-Title: Test project
 Implementation-Version: 0.0.1-SNAPSHOT
-Built-By: Zombarian
+Built-By: Andrei
 Implementation-Vendor-Id: io.DPA
-Build-Jdk: 1.8.0_152
+Build-Jdk: 1.8.0_161
 Implementation-URL: http://projects.spring.io/spring-boot/DigitalPayme
  ntAssistant/
 Created-By: Maven Integration for Eclipse
