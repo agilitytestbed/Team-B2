@@ -78,12 +78,20 @@ public class Version1Controller {
 	public ResponseEntity addTransaction(
 			@RequestBody Transaction t,
 			@RequestHeader(value = "WWW_Authenticate", required=false) String WWW_Authenticate) {
-		if(!t.validTransaction()) {
-			throw new InvalidInputException();
-		}
+		// Generate new id
+		t.setId(DatabaseCommunication.getLastTransactionID() + 1);
+		
 		if (WWW_Authenticate == null || !session.validSessionId(Integer.parseInt(WWW_Authenticate))) {
 			throw new SessionIDException();
 		}
+		
+		Set<Integer> sessionIds = session.getCategoryIds(Integer.parseInt(WWW_Authenticate));
+		
+		if(!t.validTransaction() || DatabaseCommunication.getCategory(t.getcategoryID(), sessionIds) == null) {
+			throw new InvalidInputException();
+		}
+		
+		DatabaseCommunication.incrementLastTransactionID();
 		
 		//Add the transaction id to the session
 		session.addTransactionId(Integer.parseInt(WWW_Authenticate), t.getId());
@@ -154,27 +162,25 @@ public class Version1Controller {
 		return new ResponseEntity(HttpStatus.NO_CONTENT);
 	}
 	
-	// POST
-	@RequestMapping(method = RequestMethod.POST, value = "/transactions/{transactionID}/assignCategory", params = "category")
+	// PATCH
+	@RequestMapping(method = RequestMethod.PATCH, value = "/transactions/{transactionID}/category")
 	public void assignCategory(
-			@RequestParam("category") int categoryID, 
+			@RequestBody int categoryID,
 			@PathVariable int transactionID,
 			@RequestHeader(value = "WWW_Authenticate", required=false) String WWW_Authenticate) {
 		if (WWW_Authenticate == null || !session.validSessionId(Integer.parseInt(WWW_Authenticate))) {
 			throw new SessionIDException();
 		}
+
+		Set<Integer> transactionIds = session.getTransactionIds(Integer.parseInt(WWW_Authenticate));
+		Set<Integer> categoryIds = session.getCategoryIds(Integer.parseInt(WWW_Authenticate));
 		
-		if(categoryID < 1) {
-			throw new InvalidInputException();
-		}
 		
-		Set<Integer> sessionIds = session.getTransactionIds(Integer.parseInt(WWW_Authenticate));
-		
-		if (DatabaseCommunication.getTransaction(transactionID, sessionIds) == null || 
-				DatabaseCommunication.getCategory(categoryID, sessionIds) == null) {
+		if (DatabaseCommunication.getTransaction(transactionID, transactionIds) == null || 
+				DatabaseCommunication.getCategory(categoryID, categoryIds) == null) {
 			throw new ItemNotFound();
 		}
-		DatabaseCommunication.assignCategory(categoryID, transactionID, sessionIds);
+		DatabaseCommunication.assignCategory(categoryID, transactionID);
 	}
 	
 	// ---------------- Categories -----------------
@@ -198,6 +204,9 @@ public class Version1Controller {
 	public ResponseEntity addCategory(
 			@RequestBody Category category,
 			@RequestHeader(value = "WWW_Authenticate", required=false) String WWW_Authenticate) {
+		// Generate new id
+		category.setId(DatabaseCommunication.getLastCategoryID() + 1);
+		
 		if (WWW_Authenticate == null || !session.validSessionId(Integer.parseInt(WWW_Authenticate))) {
 			throw new SessionIDException();
 		}
@@ -205,6 +214,8 @@ public class Version1Controller {
 		if (!category.validCategory()) {
 			throw new InvalidInputException();
 		}
+		
+		DatabaseCommunication.incrementLastCategoryID();
 		
 		//Add the category id to the session
 		session.addCategoryId(Integer.parseInt(WWW_Authenticate), category.getId());
@@ -235,7 +246,7 @@ public class Version1Controller {
 	
 	// PUT
 	@RequestMapping(method = RequestMethod.PUT, value = "/categories/{id}")
-	public void deleteCategory(
+	public void putCategory(
 			@RequestBody Category category ,
 			@PathVariable int id,
 			@RequestHeader(value = "WWW_Authenticate", required=false) String WWW_Authenticate) {

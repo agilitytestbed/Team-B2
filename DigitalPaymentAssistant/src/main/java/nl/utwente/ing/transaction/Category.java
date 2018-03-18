@@ -1,6 +1,11 @@
 package nl.utwente.ing.transaction;
 
+import javax.annotation.Generated;
+
+import org.springframework.beans.factory.annotation.Autowired;
+
 public class Category {
+	
 	private int id;
 	private String name;
 	
@@ -32,9 +37,6 @@ public class Category {
 	public boolean validCategory() {
 		boolean result = true;
 		
-		if (DatabaseCommunication.categoryExists(id)) {
-			result = false;
-		}
 		
 		if (name == null) {
 			result = false;

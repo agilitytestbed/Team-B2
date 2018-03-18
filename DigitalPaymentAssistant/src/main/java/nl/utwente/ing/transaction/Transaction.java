@@ -1,12 +1,9 @@
 package nl.utwente.ing.transaction;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 public class Transaction {
 	private int id;
 	
-	@JsonProperty("external-iban")
-	private String external_iban;
+	private String externalIBAN;
 	
 	private double amount;
 	private String date;
@@ -22,12 +19,12 @@ public class Transaction {
 	}
 	
 	public Transaction(int id, String date, double amount,
-			String external_iban, String type, int categoryID) {
+			String externalIBAN, String type, int categoryID) {
 		setId(id);
 		setAmount(amount);
 		setDate(date);
 		setType(transactionType.valueOf(type));
-		setExternal_iban(external_iban);
+		setExternalIBAN(externalIBAN);
 		setcategoryID(categoryID);
 	}
 
@@ -64,12 +61,12 @@ public class Transaction {
 		this.categoryID = categoryID;
 	}
 
-	public String getExternal_iban() {
-		return external_iban;
+	public String getExternalIBAN() {
+		return externalIBAN;
 	}
 
-	public void setExternal_iban(String external_iban) {
-		this.external_iban = external_iban;
+	public void setExternalIBAN(String external_iban) {
+		this.externalIBAN = external_iban;
 	}
 
 	public transactionType getType() {
@@ -83,20 +80,24 @@ public class Transaction {
 	public boolean validTransaction() {
 		boolean response = true;
 		
-		// if the transaction id already exists in the database
-		if (DatabaseCommunication.transactionExists(id)) {
+		// if a value is null
+		if (externalIBAN == null || date == null || type == null) {
 			response = false;
 		}
+		
 		
 		// if amount is negative or zero
 		if (amount < 1) {
 			response = false;
+			System.out.println("Amount value problem");
 		}
 		
-		// if category ID is negative or zero or category is not in the database
-		if (categoryID < 1 || !DatabaseCommunication.transactionExists(categoryID)) {
+		// if category ID is negative category is not in the database
+		if (categoryID < 0 || !DatabaseCommunication.categoryExists(categoryID)) {
 			response = false;
+			System.out.println("CategoryID problem");
 		}
+		
 		
 		
 		return response;

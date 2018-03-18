@@ -17,6 +17,48 @@ public class DatabaseCommunication {
 	public static final String URL = 
 			"jdbc:sqlite:"
 			+ FILENAME;
+	private static int lastCategoryID = getMaxCategoryIndex();
+	private static int lastTransactionID = getMaxTransactionIndex();
+	
+	/**
+	 * Queries the database for the largest category index.
+	 * @return
+	 * 		int representing the largest category index or -1 if there are no entries
+	 */
+	private static int getMaxCategoryIndex() {
+		String sql = "SELECT id from categories ORDER BY id DESC LIMIT 1";
+		try (Connection conn = connect();
+	             Statement stmt  = conn.createStatement();
+	             ResultSet rs    = stmt.executeQuery(sql)){
+	            
+	            if (rs.next()) {
+	            		return rs.getInt("id");
+	            }
+	        } catch (SQLException e) {
+	            System.out.println(e.getMessage());
+	        }
+		return -1;
+	}
+	
+	/**
+	 * Queries the database for the largest transaction index.
+	 * @return
+	 * 		int representing the largest transaction index or -1 if there are no entries
+	 */
+	private static int getMaxTransactionIndex() {
+		String sql = "SELECT id from transactions ORDER BY id DESC LIMIT 1";
+		try (Connection conn = connect();
+	             Statement stmt  = conn.createStatement();
+	             ResultSet rs    = stmt.executeQuery(sql)){
+	            
+	            if (rs.next()) {
+	            		return rs.getInt("id");
+	            }
+	        } catch (SQLException e) {
+	            System.out.println(e.getMessage());
+	        }
+		return -1;
+	}
 	
 	/**
 	 * Adds the set of values as an array in the sql statement string
@@ -41,6 +83,7 @@ public class DatabaseCommunication {
 		result += ")";
 		return result;
 	}
+	
 	
 	/**
 	 * Connects to the database.
@@ -80,7 +123,7 @@ public class DatabaseCommunication {
 				"id integer PRIMARY KEY," +
 				"date text," +
 				"amount real," + 
-				"'external-iban' text NOT NULL," +
+				"externalIBAN text NOT NULL," +
 				"type text NOT NULL," +
 				"categoryID integer" +
 				")";
@@ -107,12 +150,11 @@ public class DatabaseCommunication {
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, id);
-	            
 	        ResultSet rs  = pstmt.executeQuery();
 	            
 	        if (rs.next()) {
 	            return new Transaction(rs.getInt("id"), rs.getString("date"),
-	            		rs.getDouble("amount"), rs.getString("external-iban"), rs.getString("type"),
+	            		rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
 	            		rs.getInt("categoryID"));
 	        }
 	    } catch (SQLException e) {
@@ -204,7 +246,7 @@ public class DatabaseCommunication {
 			ResultSet rs  = pstmt.executeQuery();
 	        while (rs.next()) {
 	        		transactions.add(new Transaction(rs.getInt("id"), rs.getString("date"),
-	    	            	rs.getDouble("amount"), rs.getString("external-iban"), rs.getString("type"),
+	    	            	rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
 	    	            	rs.getInt("categoryID")));
 	        }
 	        return transactions;
@@ -231,7 +273,7 @@ public class DatabaseCommunication {
             pstmt.setInt(1, t.getId());
             pstmt.setString(2, t.getDate());
             pstmt.setDouble(3, t.getAmount());
-            pstmt.setString(4, t.getExternal_iban());
+            pstmt.setString(4, t.getExternalIBAN());
             pstmt.setString(5, t.getType().toString());
             pstmt.setInt(6, t.getcategoryID());
             pstmt.executeUpdate();
@@ -250,7 +292,7 @@ public class DatabaseCommunication {
 	public static void updateTransaction(Transaction t, int id, Set<Integer> sessionIds) {
 		String sql = "UPDATE transactions SET date = ? , "
                 + "amount = ? , "
-                + "'external-iban' = ? , "
+                + "externalIBAN = ? , "
                 + "type = ? , "
                 + "categoryID = ?"
                 + "WHERE id = ? AND id IN ";
@@ -263,7 +305,7 @@ public class DatabaseCommunication {
             // set the corresponding param
         		pstmt.setString(1, t.getDate());
             pstmt.setDouble(2, t.getAmount());
-            pstmt.setString(3, t.getExternal_iban());
+            pstmt.setString(3, t.getExternalIBAN());
             pstmt.setString(4, t.getType().toString());
             pstmt.setInt(5, t.getcategoryID());
             pstmt.setInt(6, id);
@@ -295,10 +337,9 @@ public class DatabaseCommunication {
         }
 	}
 	
-	public static void assignCategory(int categoryID, int transactionID, Set<Integer> sessionIds) {
+	public static void assignCategory(int categoryID, int transactionID) {
 		String sql = "UPDATE transactions SET categoryID = ?"
-                + "WHERE id = ? AND id IN ";
-		sql = setToSql(sql, sessionIds);
+                + "WHERE id = ?";
         try (Connection conn = connect();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
         		
@@ -445,4 +486,28 @@ public class DatabaseCommunication {
 		//addCategory(new Category(0, "debt"));
 		
 	}
+
+
+	public static int getLastTransactionID() {
+		return lastTransactionID;
+	}
+
+
+	public static void incrementLastTransactionID() {
+		DatabaseCommunication.lastTransactionID++;
+	}
+
+
+	public static int getLastCategoryID() {
+		return lastCategoryID;
+	}
+
+
+	public static void incrementLastCategoryID() {
+		DatabaseCommunication.lastCategoryID++;
+	}
+
+
+
+
 }
