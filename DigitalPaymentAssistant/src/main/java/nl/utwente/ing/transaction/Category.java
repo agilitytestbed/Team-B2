@@ -1,9 +1,5 @@
 package nl.utwente.ing.transaction;
 
-import javax.annotation.Generated;
-
-import org.springframework.beans.factory.annotation.Autowired;
-
 public class Category {
 	
 	private int id;

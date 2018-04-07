@@ -1,5 +1,8 @@
 package nl.utwente.ing.transaction;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
+
 public class Transaction {
 	private int id;
 	
@@ -8,7 +11,7 @@ public class Transaction {
 	private double amount;
 	private String date;
 	private transactionType type;
-	private int categoryID;
+	private Category category;
 	
 	public enum transactionType{
 		deposit, withdrawal
@@ -19,13 +22,13 @@ public class Transaction {
 	}
 	
 	public Transaction(int id, String date, double amount,
-			String externalIBAN, String type, int categoryID) {
+			String externalIBAN, String type, Category category) {
 		setId(id);
 		setAmount(amount);
 		setDate(date);
 		setType(transactionType.valueOf(type));
 		setExternalIBAN(externalIBAN);
-		setcategoryID(categoryID);
+		setCategory(category);
 	}
 
 	public int getId() {
@@ -53,12 +56,12 @@ public class Transaction {
 		this.date = date;
 	}
 
-	public int getcategoryID() {
-		return categoryID;
+	public Category getCategory() {
+		return category;
 	}
 
-	public void setcategoryID(int categoryID) {
-		this.categoryID = categoryID;
+	public void setCategory(Category category) {
+		this.category = category;
 	}
 
 	public String getExternalIBAN() {
@@ -77,29 +80,36 @@ public class Transaction {
 		this.type = type;
 	}
 	
+	public int CategoryID() {
+		if (category != null) {
+			return category.getId();
+		} else {
+			return -1;
+		}
+	}
+	
 	public boolean validTransaction() {
-		boolean response = true;
 		
 		// if a value is null
 		if (externalIBAN == null || date == null || type == null) {
-			response = false;
+			return false;
 		}
 		
 		
 		// if amount is negative or zero
 		if (amount < 1) {
-			response = false;
 			System.out.println("Amount value problem");
+			return false;
 		}
 		
-		// if category ID is negative category is not in the database
-		if (categoryID < 0 || !DatabaseCommunication.categoryExists(categoryID)) {
-			response = false;
-			System.out.println("CategoryID problem");
+		// if the date is not valid date-time
+		try {
+			LocalDateTime.parse(date);
+		} catch (DateTimeParseException e) {
+			return false;
 		}
 		
+		return true;
 		
-		
-		return response;
 	}
 }

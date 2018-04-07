@@ -19,6 +19,8 @@ public class Sessions {
 		maxSessionId = 0;
 	}
 	
+	
+	
 	public void addSession(int session) {
 		transactionSessions.put(session, new HashSet<>());
 		categorySessions.put(session, new HashSet<>());
