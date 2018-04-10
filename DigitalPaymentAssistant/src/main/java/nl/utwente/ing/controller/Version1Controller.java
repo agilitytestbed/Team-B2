@@ -486,7 +486,7 @@ public class Version1Controller {
 	
 	// ---------------- Sessions -----------------
 	// POST
-	@RequestMapping(value = "/sessions", method = RequestMethod.POST, produces = "application/json", consumes = "application/json")
+	@RequestMapping(value = "/sessions", method = RequestMethod.POST, produces = "application/json", consumes = "*")
 	public String getSessionId() {
 		// One more than the maximum session Id present.
 		int newSessionId = DatabaseCommunication.getMaxSessionId() + 1;
