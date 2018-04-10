@@ -5,7 +5,6 @@ import java.util.Set;
 
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -19,7 +18,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-import nl.utwente.ing.Sessions;
 import nl.utwente.ing.transaction.Category;
 import nl.utwente.ing.transaction.DatabaseCommunication;
 import nl.utwente.ing.transaction.Transaction;
@@ -488,7 +486,7 @@ public class Version1Controller {
 	
 	// ---------------- Sessions -----------------
 	// POST
-	@RequestMapping(value = "/sessions", method = RequestMethod.POST, produces = "application/json")
+	@RequestMapping(value = "/sessions", method = RequestMethod.POST, produces = "application/json", consumes = "application/json")
 	public String getSessionId() {
 		// One more than the maximum session Id present.
 		int newSessionId = DatabaseCommunication.getMaxSessionId() + 1;

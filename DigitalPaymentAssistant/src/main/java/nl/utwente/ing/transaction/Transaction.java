@@ -1,6 +1,7 @@
 package nl.utwente.ing.transaction;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
 public class Transaction {
@@ -104,7 +105,8 @@ public class Transaction {
 		
 		// if the date is not valid date-time
 		try {
-			LocalDateTime.parse(date);
+			DateTimeFormatter timeFormatter = DateTimeFormatter.ISO_DATE_TIME;
+		    timeFormatter.parse(date);
 		} catch (DateTimeParseException e) {
 			return false;
 		}
