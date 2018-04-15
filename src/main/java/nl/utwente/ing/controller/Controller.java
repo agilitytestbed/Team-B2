@@ -25,7 +25,7 @@ import nl.utwente.ing.transaction.Transaction;
 
 @RestController
 @RequestMapping(value = "/api/v1" , produces = "application/json", consumes = "application/json")
-public class Version1Controller {
+public class Controller {
 	
 	
 	// ---------------- Exception handling --------------------
