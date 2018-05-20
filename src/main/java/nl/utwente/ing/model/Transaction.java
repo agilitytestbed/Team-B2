@@ -1,22 +1,22 @@
-package nl.utwente.ing.transaction;
+package nl.utwente.ing.model;
 
-import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
+import org.springframework.stereotype.Component;
+
+@Component
 public class Transaction {
 	private int id;
 	
 	private String externalIBAN;
 	
 	private double amount;
+	private String description = "";
 	private String date;
-	private transactionType type;
+	private TransactionType type;
 	private Category category;
 	
-	public enum transactionType{
-		deposit, withdrawal
-	}
 	
 	public Transaction() {
 		
@@ -27,7 +27,7 @@ public class Transaction {
 		setId(id);
 		setAmount(amount);
 		setDate(date);
-		setType(transactionType.valueOf(type));
+		setType(TransactionType.valueOf(type));
 		setExternalIBAN(externalIBAN);
 		setCategory(category);
 	}
@@ -73,11 +73,11 @@ public class Transaction {
 		this.externalIBAN = external_iban;
 	}
 
-	public transactionType getType() {
+	public TransactionType getType() {
 		return type;
 	}
 
-	public void setType(transactionType type) {
+	public void setType(TransactionType type) {
 		this.type = type;
 	}
 	
@@ -92,7 +92,7 @@ public class Transaction {
 	public boolean validTransaction() {
 		
 		// if a value is null
-		if (externalIBAN == null || date == null || type == null) {
+		if (externalIBAN == null || date == null || type == null || description == null) {
 			return false;
 		}
 		
@@ -113,5 +113,13 @@ public class Transaction {
 		
 		return true;
 		
+	}
+
+	public String getDescription() {
+		return description;
+	}
+
+	public void setDescription(String description) {
+		this.description = description;
 	}
 }

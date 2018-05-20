@@ -1,4 +1,4 @@
-package nl.utwente.ing.transaction;
+package nl.utwente.ing.model;
 
 public class Category {
 	
