@@ -6,16 +6,26 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.Set;
 
+import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.TimeInterval;
 import nl.utwente.ing.model.Transaction;
+import nl.utwente.ing.model.TransactionType;
+import nl.utwente.ing.service.TransactionService;
 
 
 public class DatabaseCommunication {
@@ -27,11 +37,10 @@ public class DatabaseCommunication {
 	/*
 	 * -------------------- Code for handling sessions --------------------
 	 */
-	
 	public static Set<Integer> getIds(int sessionID, String table){
 		Set<Integer> ids = new HashSet<>();
 		
-		String sql = "SELECT * FROM " + table + " WHERE session == ?";
+		String sql = "SELECT * FROM " + table + " WHERE session = ?";
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, sessionID);
@@ -126,7 +135,7 @@ public class DatabaseCommunication {
 	}
 	
 	public static boolean validSessionId(int sessionID) {
-		String sql = "SELECT * FROM sessions WHERE session == ?";
+		String sql = "SELECT * FROM sessions as s WHERE s.session = ?";
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, sessionID);
@@ -141,6 +150,7 @@ public class DatabaseCommunication {
 		
 		return false;
 	}
+	
 	
 	public static void deleteTransactionId(int sessionID, int id) {
 		deleteId(sessionID, id, "transactionIds");
@@ -252,17 +262,20 @@ public class DatabaseCommunication {
 	 * 			Transaction object from the database
 	 */
 	public static Transaction getTransaction(int id, Set<Integer> sessionIds) {
-		String sql = "SELECT * FROM transactions WHERE id == ? AND id IN ";
+		String sql = "SELECT * FROM transactions WHERE id = ? AND id IN ";
 		sql = setToSql(sql, sessionIds);
+
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, id);
 	        ResultSet rs  = pstmt.executeQuery();
-	            
-	        if (rs.next()) {
-	            return new Transaction(rs.getInt("id"), rs.getString("date"),
-	            		rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
-	            		getCategory(rs.getInt("categoryID")));
+	        
+	        List<Transaction> transactions = TransactionService.getTransactions(rs);
+	        
+	        if (transactions.size() == 1) {
+	        	// TODO remove this below
+	        		transactions.get(0).returnUnixTimestamp();
+	            return transactions.get(0);
 	        }
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
@@ -278,7 +291,7 @@ public class DatabaseCommunication {
 	 * 			Boolean indicating whether the transaction is present or not in the database
 	 */
 	public static boolean transactionExists(int id) {
-		String sql = "SELECT * FROM transactions WHERE id == ?";
+		String sql = "SELECT * FROM transactions WHERE id = ?";
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, id);
@@ -302,7 +315,7 @@ public class DatabaseCommunication {
 	 * 			Boolean indicating whether the category is present or not in the database
 	 */
 	public static boolean categoryExists(int id) {
-		String sql = "SELECT * FROM categories WHERE id == ?";
+		String sql = "SELECT * FROM categories WHERE id = ?";
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 	        pstmt.setInt(1, id);
@@ -352,7 +365,7 @@ public class DatabaseCommunication {
 				
 			ResultSet rs  = pstmt.executeQuery();
 	        while (rs.next()) {
-	        		transactions.add(new Transaction(rs.getInt("id"), rs.getString("date"),
+	        		transactions.add(new Transaction(rs.getInt("id"), rs.getLong("date"),
 	    	            	rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
 	    	            	getCategory(rs.getInt("categoryID"))));
 	        }
@@ -378,7 +391,7 @@ public class DatabaseCommunication {
 		try (Connection conn = connect();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, t.getId());
-            pstmt.setString(2, t.getDate());
+            pstmt.setLong(2, t.returnUnixTimestamp());
             pstmt.setDouble(3, t.getAmount());
             pstmt.setString(4, t.getDescription());
             pstmt.setString(5, t.getExternalIBAN());
@@ -411,7 +424,7 @@ public class DatabaseCommunication {
         		
         		
             // set the corresponding param
-        		pstmt.setString(1, t.getDate());
+        		pstmt.setLong(1, t.returnUnixTimestamp());
             pstmt.setDouble(2, t.getAmount());
             pstmt.setString(3, t.getExternalIBAN());
             pstmt.setString(4, t.getType().toString());
@@ -514,7 +527,7 @@ public class DatabaseCommunication {
 	 * 			Category object from the database
 	 */
 	public static Category getCategory(int id, Set<Integer> sessionIds) {
-		String sql = "SELECT * FROM categories WHERE id == ? AND id IN ";
+		String sql = "SELECT * FROM categories WHERE id = ? AND id IN ";
 		sql = setToSql(sql, sessionIds);
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
@@ -542,7 +555,7 @@ public class DatabaseCommunication {
 	 * 			Category object from the database
 	 */
 	public static Category getCategory(int id) {
-		String sql = "SELECT * FROM categories WHERE id == ?";
+		String sql = "SELECT * FROM categories WHERE id = ?";
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
 			pstmt.setInt(1, id);
@@ -689,7 +702,7 @@ public class DatabaseCommunication {
 	 * 			CategoryRule object from the database
 	 */
 	public static CategoryRule getCategoryRule(int id, Set<Integer> sessionIds) {
-		String sql = "SELECT * FROM categoryRules WHERE id == ? AND id IN ";
+		String sql = "SELECT * FROM categoryRules WHERE id = ? AND id IN ";
 		sql = setToSql(sql, sessionIds);
 		try (Connection conn = connect();
 	             PreparedStatement pstmt  = conn.prepareStatement(sql)) {
@@ -707,6 +720,7 @@ public class DatabaseCommunication {
 	    }
 		return null;
 	}
+
 	
 	/**
 	 * Updates the category rule with the given id 
@@ -778,8 +792,176 @@ public class DatabaseCommunication {
 			}
 		}
 	}
+	/**
+	 * Gets all transactions from the database that happened in the given interval
+	 * @param transactionIds
+	 * @param intervalStart
+	 * @param interval
+	 * @return
+	 */
+	public static List<Transaction> getTransactionsAtInterval(Set<Integer> transactionIds, ZonedDateTime intervalStart, ChronoUnit interval) {
+		ZonedDateTime intervalEnd = intervalStart.plus(1, interval);
+		String sql =  "SELECT * FROM transactions WHERE date >= ? AND date < ? AND id IN ";
+		sql = setToSql(sql, transactionIds);
+		sql += " ORDER BY date ASC;";
+
+		
+		try (Connection conn = connect()){
+			PreparedStatement pstmt = conn.prepareStatement(sql);
+			pstmt.setLong(1, intervalStart.toEpochSecond());
+			pstmt.setLong(2, intervalEnd.toEpochSecond());
+			
+			ResultSet rs = pstmt.executeQuery();
+			return TransactionService.getTransactions(rs);
+		} catch (SQLException e) {
+			System.out.println(e.getMessage());
+		}
+		return null;
+	}
+	/**
+	 * Splits the session into time intervals and returns these intervals
+	 * @param transactionIds
+	 * 						The transaction ids associated with this session
+	 * @param interval
+	 * 						The interval into which the session is split
+	 * @return
+	 */
+	public static List<ZonedDateTime> getTransactionIntervals(ChronoUnit interval, int nrIntervals){
+		
+		List<ZonedDateTime> result = new ArrayList<>();
+		
+		
+		ZonedDateTime now = Instant.now().atZone(ZoneOffset.UTC);
+		ZonedDateTime timeMax = null;
+		
+		// The code below rounds down to the beginning of the Hour, Day, Week, Month or Year
+		if (interval.equals(ChronoUnit.WEEKS)) {		
+			// Rounds down to the nearest day
+			timeMax = now.truncatedTo(ChronoUnit.DAYS);
+			
+			// Rounds down to the first day of the week
+			timeMax = timeMax.minus(timeMax.getDayOfWeek().getValue() - 1, ChronoUnit.DAYS);
+			
+		} else if (interval.equals(ChronoUnit.MONTHS)) {
+			// Rounds down to the nearest day
+			timeMax = now.truncatedTo(ChronoUnit.DAYS);
+			
+			// Rounds down to the first day of the month
+			timeMax = timeMax.withDayOfMonth(1);
+			
+		} else if (interval.equals(ChronoUnit.YEARS)) {
+			// Rounds down to the nearest day
+			timeMax = now.truncatedTo(ChronoUnit.DAYS);
+			
+			// Rounds down to the first day of the month
+			timeMax = timeMax.withDayOfMonth(1);
+			
+			// Rounds down to the first month of the year
+			timeMax = timeMax.withMonth(1);
+		}
+		else {
+			timeMax = now.truncatedTo(interval);
+		}
+
+		ZonedDateTime timeMin = timeMax.minus(nrIntervals, interval);
+
+
+		ZonedDateTime timeAtInterval = timeMin;
+		for (int i = 0; i < nrIntervals; i++) {
+			timeAtInterval = timeAtInterval.plus(1, interval);
+			result.add(timeAtInterval);
+			}
+		return result;
+		}
+		
+		
+	/**
+	 * Gets the balance history split into intervals of variable size
+	 * @param transactionIds
+	 * @param time
+	 * @param nrIntervals
+	 * @return List of candlestick objects containing the necessary interval information
+	 */
+	public static List<CandleStick> getBalanceHistory(Set<Integer> transactionIds, ChronoUnit time, int nrIntervals){
+		List<CandleStick> result = new ArrayList<>();
+		// Gets all intervals from now to a given number of intervals back
+		List<ZonedDateTime> zdt = getTransactionIntervals(time, nrIntervals);
+		// for each interval, get transactions and generate candlestick data points
+		for (ZonedDateTime z: zdt) {
+			List<Transaction> transactions = getTransactionsAtInterval(transactionIds, z, time);
+			double volume = 0;
+			double open = getBalanceAtIntervalStart(transactionIds, z);
+			double close = open;
+			double high = open;
+			double low = open;
+			for (Transaction t: transactions) {
+				if (t.getType().equals(TransactionType.deposit)) {
+					close += t.getAmount();
+				} else {
+					close -= t.getAmount();
+				}
+				volume+= t.getAmount();
+				high = Math.max(close, high);
+				low = Math.min(close, low);
+			}
+			result.add(new CandleStick(open, close, high, low, volume, z.toEpochSecond()));
+		}
+		
+		return result;
+	}
+	/**
+	 * Gets the balance of the account at the start of an interval
+	 * @param transactionIds
+	 * @param intervalStart
+	 * @return Amount of money stored on the account before a given date
+	 */
+	public static double getBalanceAtIntervalStart(Set<Integer> transactionIds, ZonedDateTime intervalStart) {
+		String sql = "SELECT sum(case when type='deposit' then amount else -amount end) as initial FROM transactions WHERE date < ? AND id IN ";
+		sql = setToSql(sql, transactionIds);
+		try (Connection conn = connect()){
+			PreparedStatement pstmt = conn.prepareStatement(sql);
+			pstmt.setLong(1, intervalStart.toEpochSecond());
+			
+			ResultSet rs = pstmt.executeQuery();
+			if (rs.next()) {
+				return rs.getDouble("initial");
+			}
+		} catch (SQLException e) {
+			System.out.println(e.getMessage());
+		}
+		return 0;
+		
+	}
 	
 	
+/*	public static void fillStatementWithParams(PreparedStatement stmt, Object[] params) {
+		for (int i = 0; i < params.length; i++) {
+			try {
+				stmt.setObject(i + 1, params[i]);
+			} catch (SQLException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	private static Object[] runSelectStatement(String sql, Object... params) throws SQLException {
+		Connection conn = null;
+		Object[] result = null;
+		try {
+			conn = connect();
+			PreparedStatement statement = conn.prepareStatement(sql);
+			fillStatementWithParams(statement, params);
+			ResultSet rs = statement.executeQuery();
+			int i = 0;
+			result = new Object[rs.getFetchSize();];
+			while(rs.next()) {
+				result[i] = rs.get
+			}
+		} finally {
+			conn.close();
+		}
+	}
+	*/
 
 
 

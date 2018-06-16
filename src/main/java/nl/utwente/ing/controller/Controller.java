@@ -1,5 +1,6 @@
 package nl.utwente.ing.controller;
 
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
@@ -19,8 +20,10 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import nl.utwente.ing.database.DatabaseCommunication;
+import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.TimeInterval;
 import nl.utwente.ing.model.Transaction;
 
 
@@ -458,6 +461,35 @@ public class Controller {
 		DatabaseCommunication.deleteCategoryRuleId(Integer.parseInt(X_session_ID), id);
 		
 		return new ResponseEntity<CategoryRule>(HttpStatus.NO_CONTENT);
+	}
+
+	// ---------------- Balance History -----------------
+	// GET
+	@RequestMapping("/balance/history")
+	public List<CandleStick> getBalanceHistory(
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID,
+			@RequestParam(value="interval", defaultValue="month", required=false) String interval,
+			@RequestParam(value="intervals", defaultValue="24", required=false) int intervals) {
+		X_session_ID = checkSession(X_session_ID, session_id);
+		
+		// Minimum value
+		intervals = Math.max(intervals, 1);
+		
+		// Maximum value
+		intervals = Math.min(intervals, 200);
+		
+		ChronoUnit time = null;
+		
+		try {
+			time = TimeInterval.valueOf(interval.toUpperCase()).getUnit();
+		} catch (IllegalArgumentException e) {
+			throw new InvalidInputException();
+		}
+		
+		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
+		
+		return DatabaseCommunication.getBalanceHistory(sessionIds, time, intervals);
 	}
 
 }

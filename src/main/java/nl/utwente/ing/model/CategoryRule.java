@@ -105,4 +105,13 @@ public class CategoryRule {
 			return false;
 		}
 	}
+	
+	public String toStringData() {
+		JSONObject json = new JSONObject();
+		json.put("description", description)
+			.put("iBAN", iBAN)
+			.put("type", type.toString())
+			.put("category_id", category_id);
+		return json.toString();
+	}
 }

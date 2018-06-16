@@ -1,5 +1,8 @@
 package nl.utwente.ing.model;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
@@ -22,8 +25,12 @@ public class Transaction {
 		
 	}
 	
-	public Transaction(int id, String date, double amount,
+	public Transaction(int id, long unixTimestamp, double amount,
 			String externalIBAN, String type, Category category) {
+		
+		String date = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mmX")
+                .withZone(ZoneOffset.UTC)
+                .format(Instant.ofEpochSecond(unixTimestamp));
 		setId(id);
 		setAmount(amount);
 		setDate(date);
@@ -89,6 +96,11 @@ public class Transaction {
 		}
 	}
 	
+	public long returnUnixTimestamp() {
+		DateTimeFormatter formatter = DateTimeFormatter.ISO_DATE_TIME;
+		return LocalDateTime.from(formatter.parse(date)).toEpochSecond(ZoneOffset.UTC);
+	}
+	
 	public boolean validTransaction() {
 		
 		// if a value is null
@@ -122,4 +134,5 @@ public class Transaction {
 	public void setDescription(String description) {
 		this.description = description;
 	}
+	
 }

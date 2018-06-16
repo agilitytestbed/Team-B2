@@ -18,7 +18,7 @@ public class DBInitializeConfig {
 		
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS transactions (" + 
 					"id integer PRIMARY KEY," +
-					"date text," +
+					"date integer," +
 					"amount real," + 
 					"description text," +
 					"externalIBAN text NOT NULL," +
@@ -60,6 +60,7 @@ public class DBInitializeConfig {
 					")");
 			statement.close();
 			connection.close();
+			System.out.println("Tables initialized!");
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
