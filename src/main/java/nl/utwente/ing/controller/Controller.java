@@ -23,6 +23,7 @@ import nl.utwente.ing.database.DatabaseCommunication;
 import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.TimeInterval;
 import nl.utwente.ing.model.Transaction;
 
@@ -92,16 +93,15 @@ public class Controller {
 			@RequestParam(value="category", defaultValue="-1") int categoryID,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		// Enforce the limits for offset and limit
 		offset = Math.max(offset, 0);
 		limit = Math.max(limit, 1);
 		limit = Math.min(limit, 100);
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
 		
-		return DatabaseCommunication.getAllTransactions(offset, limit, categoryID, sessionIds);
+		return DatabaseCommunication.getAllExternalTransactions(offset, limit, categoryID, sessionId);
 	}
 	
 	// POST
@@ -111,31 +111,18 @@ public class Controller {
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
 		
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
 		
 		// If it's not a valid transaction
 		if(t == null || !t.validTransaction()) {
 			throw new InvalidInputException();
 		}
 		
-		// Generate new id
-		int newId = DatabaseCommunication.getLastTransactionID() + 1;
-		t.setId(newId);
-		
-		// Apply category rule
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryRuleIds(Integer.parseInt(X_session_ID));
-		DatabaseCommunication.applyCategoryRule(t, sessionIds);
-
-		
-		
-		//Add the transaction id to the session
-		DatabaseCommunication.addTransactionId(Integer.parseInt(X_session_ID), t.getId());
-		
-		DatabaseCommunication.addTransaction(t);
 		
 		
 		// Create a response add the created object to it
-		ResponseEntity<Transaction> response = new ResponseEntity<Transaction>(t , HttpStatus.CREATED);
+		ResponseEntity<Transaction> response = new ResponseEntity<Transaction>(DatabaseCommunication.addTransaction(t, sessionId) , HttpStatus.CREATED);
 		
 		return response;
 	}
@@ -146,11 +133,9 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
-		
-		Transaction transaction = DatabaseCommunication.getTransaction(id, sessionIds);
+		Transaction transaction = DatabaseCommunication.getTransaction(id, sessionId);
 		if (transaction == null) {
 			throw new ItemNotFound();
 		}
@@ -165,20 +150,19 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		if(t == null || !t.validTransaction()) {
 			throw new InvalidInputException();
 		}
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getTransaction(id, sessionIds) == null) {
+		if (DatabaseCommunication.getTransaction(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
-		DatabaseCommunication.updateTransaction(t ,id, sessionIds);
+		DatabaseCommunication.updateTransaction(t ,id, sessionId);
 		
-		return new ResponseEntity<Transaction>(DatabaseCommunication.getTransaction(id, sessionIds), HttpStatus.OK);
+		return new ResponseEntity<Transaction>(DatabaseCommunication.getTransaction(id, sessionId), HttpStatus.OK);
 	}
 	
 	// DELETE
@@ -188,17 +172,14 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getTransaction(id, sessionIds) == null) {
+		if (DatabaseCommunication.getTransaction(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
-		DatabaseCommunication.deleteTransaction(id, sessionIds);
+		DatabaseCommunication.deleteTransaction(id, sessionId);
 		
-		// Remove it from the sessions
-		DatabaseCommunication.deleteTransactionId(Integer.parseInt(X_session_ID), id);
 		
 		return new ResponseEntity(HttpStatus.NO_CONTENT);
 	}
@@ -210,11 +191,9 @@ public class Controller {
 			@PathVariable int transactionID,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 
-		Set<Integer> transactionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
-		Set<Integer> categoryIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
 		
 		// Create a JSON object
 		JSONObject category;
@@ -226,14 +205,14 @@ public class Controller {
 			throw new ItemNotFound();
 		}
 		
-		if (DatabaseCommunication.getTransaction(transactionID, transactionIds) == null || 
-				DatabaseCommunication.getCategory(categoryID, categoryIds) == null) {
+		if (DatabaseCommunication.getTransaction(transactionID, sessionId) == null || 
+				DatabaseCommunication.getCategory(categoryID, sessionId) == null) {
 			throw new ItemNotFound();
 		}
 		
 		DatabaseCommunication.assignCategory(categoryID, transactionID);
 		
-		return new ResponseEntity<Transaction>(DatabaseCommunication.getTransaction(transactionID, transactionIds), HttpStatus.OK);
+		return new ResponseEntity<Transaction>(DatabaseCommunication.getTransaction(transactionID, sessionId), HttpStatus.OK);
 	}
 	
 	// ---------------- Categories -----------------
@@ -243,11 +222,9 @@ public class Controller {
 	public List<Category> getCategories(
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
-		
-		return DatabaseCommunication.getAllCategories(sessionIds);
+		return DatabaseCommunication.getAllCategories(sessionId);
 	}
 	
 	// POST
@@ -257,24 +234,14 @@ public class Controller {
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
 		
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		if (category == null || !category.validCategory()) {
 			throw new InvalidInputException();
 		}
 		
-		// Generate new id
-		int newId = DatabaseCommunication.getLastCategoryID() + 1;
-		category.setId(newId);
 		
-		
-		
-		//Add the category id to the session
-		DatabaseCommunication.addCategoryId(Integer.parseInt(X_session_ID), category.getId());
-		
-		DatabaseCommunication.addCategory(category);
-		
-		return new ResponseEntity<Category>(category ,HttpStatus.CREATED);
+		return new ResponseEntity<Category>(DatabaseCommunication.addCategory(category, sessionId) ,HttpStatus.CREATED);
 	}
 	
 	// GET
@@ -283,11 +250,10 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
 		
-		Category category = DatabaseCommunication.getCategory(id, sessionIds);
+		Category category = DatabaseCommunication.getCategory(id, sessionId);
 		if (category == null) {
 			throw new ItemNotFound();
 		}
@@ -302,21 +268,20 @@ public class Controller {
 			@RequestParam(value="session_id", required =false) String session_id,
 			@PathVariable int id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		if (category == null || !category.validCategory()) {
 			throw new InvalidInputException();
 		}
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getCategory(id, sessionIds) == null) {
+		if (DatabaseCommunication.getCategory(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
 		
-		DatabaseCommunication.updateCategory(category, id, sessionIds);
+		DatabaseCommunication.updateCategory(category, id, sessionId);
 		
-		return new ResponseEntity<Category>(DatabaseCommunication.getCategory(id, sessionIds), HttpStatus.OK);
+		return new ResponseEntity<Category>(DatabaseCommunication.getCategory(id, sessionId), HttpStatus.OK);
 	}
 	
 	// DELETE
@@ -325,18 +290,15 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getCategory(id, sessionIds) == null) {
+		if (DatabaseCommunication.getCategory(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
 		
-		DatabaseCommunication.deleteCategory(id, sessionIds);
+		DatabaseCommunication.deleteCategory(id, sessionId);
 		
-		// Remove it from the sessions
-		DatabaseCommunication.deleteCategoryId(Integer.parseInt(X_session_ID), id);
 		
 		return new ResponseEntity<Category>(HttpStatus.NO_CONTENT);
 	}
@@ -359,11 +321,9 @@ public class Controller {
 	public List<CategoryRule> getCategoryRules(
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryRuleIds(Integer.parseInt(X_session_ID));
-		
-		return DatabaseCommunication.getAllCategoryRules(sessionIds);
+		return DatabaseCommunication.getAllCategoryRules(sessionId);
 	}
 	
 	// POST
@@ -373,30 +333,24 @@ public class Controller {
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
 		
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		if (categoryRule == null || !categoryRule.validCategoryRule()) {
 			throw new InvalidInputException();
 		}
 		
-		// Generate new id
-		int newId = DatabaseCommunication.getLastCategoryRuleID() + 1;
-		categoryRule.setId(newId);
 		
 		
 		//Add the category rule id to the session
-		DatabaseCommunication.addCategoryRuleId(Integer.parseInt(X_session_ID), categoryRule.getId());
 		
-		DatabaseCommunication.addCategoryRule(categoryRule);
+		CategoryRule addedCategoryRule = DatabaseCommunication.addCategoryRule(categoryRule, sessionId);
 		
 		// If it is apply on history, try to apply it on previous transactions
-		Set<Integer> ruleSessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
-		Set<Integer> categorySessionIds = DatabaseCommunication.getCategoryIds(Integer.parseInt(X_session_ID));
-		if (categoryRule.isApplyOnHistory() && DatabaseCommunication.getCategory(categoryRule.getCategory_id(), categorySessionIds)!= null) {
-			DatabaseCommunication.applyCategoryRuleOnHistory(categoryRule, ruleSessionIds);
+		if (addedCategoryRule.isApplyOnHistory() && DatabaseCommunication.getCategory(addedCategoryRule.getCategory_id(), sessionId)!= null) {
+			DatabaseCommunication.applyCategoryRuleOnHistory(addedCategoryRule, sessionId);
 		}
 		
-		return new ResponseEntity<CategoryRule>(categoryRule ,HttpStatus.CREATED);
+		return new ResponseEntity<CategoryRule>(addedCategoryRule ,HttpStatus.CREATED);
 	}
 	
 	// GET
@@ -405,11 +359,10 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryRuleIds(Integer.parseInt(X_session_ID));
 		
-		CategoryRule categoryRule = DatabaseCommunication.getCategoryRule(id, sessionIds);
+		CategoryRule categoryRule = DatabaseCommunication.getCategoryRule(id, sessionId);
 		if (categoryRule == null) {
 			throw new ItemNotFound();
 		}
@@ -424,21 +377,20 @@ public class Controller {
 			@RequestParam(value="session_id", required =false) String session_id,
 			@PathVariable int id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		if (categoryRule == null || !categoryRule.validCategoryRule()) {
 			throw new InvalidInputException();
 		}
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryRuleIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getCategoryRule(id, sessionIds) == null) {
+		if (DatabaseCommunication.getCategoryRule(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
 		
-		DatabaseCommunication.updateCategoryRule(categoryRule, id, sessionIds);
+		DatabaseCommunication.updateCategoryRule(categoryRule, id, sessionId);
 		
-		return new ResponseEntity<CategoryRule>(DatabaseCommunication.getCategoryRule(id, sessionIds), HttpStatus.OK);
+		return new ResponseEntity<CategoryRule>(DatabaseCommunication.getCategoryRule(id, sessionId), HttpStatus.OK);
 	}
 	
 	// DELETE
@@ -447,18 +399,15 @@ public class Controller {
 			@PathVariable int id,
 			@RequestParam(value="session_id", required =false) String session_id,
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getCategoryRuleIds(Integer.parseInt(X_session_ID));
 		
-		if (DatabaseCommunication.getCategoryRule(id, sessionIds) == null) {
+		if (DatabaseCommunication.getCategoryRule(id, sessionId) == null) {
 			throw new ItemNotFound();
 		}
 		
-		DatabaseCommunication.deleteCategoryRule(id, sessionIds);
+		DatabaseCommunication.deleteCategoryRule(id, sessionId);
 		
-		// Remove it from the sessions
-		DatabaseCommunication.deleteCategoryRuleId(Integer.parseInt(X_session_ID), id);
 		
 		return new ResponseEntity<CategoryRule>(HttpStatus.NO_CONTENT);
 	}
@@ -471,7 +420,7 @@ public class Controller {
 			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID,
 			@RequestParam(value="interval", defaultValue="month", required=false) String interval,
 			@RequestParam(value="intervals", defaultValue="24", required=false) int intervals) {
-		X_session_ID = checkSession(X_session_ID, session_id);
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
 		
 		// Minimum value
 		intervals = Math.max(intervals, 1);
@@ -487,9 +436,54 @@ public class Controller {
 			throw new InvalidInputException();
 		}
 		
-		Set<Integer> sessionIds = DatabaseCommunication.getTransactionIds(Integer.parseInt(X_session_ID));
 		
-		return DatabaseCommunication.getBalanceHistory(sessionIds, time, intervals);
+		return DatabaseCommunication.getBalanceHistory(sessionId, time, intervals);
 	}
-
+	// ---------------- Saving Goals -----------------
+	// GET
+	@RequestMapping("/savingGoals")
+	public List<SavingGoal> getSavingGoals(
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		
+		return DatabaseCommunication.getAllSavingGoals(sessionId);
+	}
+	
+	// POST
+	@RequestMapping(method = RequestMethod.POST, value = "/savingGoals")
+	public ResponseEntity<SavingGoal> addSavingGoal(
+			@RequestBody SavingGoal savingGoal,
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		if (savingGoal == null || !savingGoal.validSavingGoal()) {
+			throw new InvalidInputException();
+		}
+		
+		
+		return new ResponseEntity<SavingGoal>(DatabaseCommunication.addSavingGoal(savingGoal, sessionId) ,HttpStatus.CREATED);
+	}
+	
+	// DELETE
+	@RequestMapping(method = RequestMethod.DELETE, value = "/savingGoals/{id}")
+	public ResponseEntity<SavingGoal> deleteSavingGoal(
+			@PathVariable int id,
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		
+		if (DatabaseCommunication.getSavingGoal(id, sessionId) == null) {
+			throw new ItemNotFound();
+		}
+		
+		DatabaseCommunication.deleteSavingGoal(id, sessionId);
+		
+		
+		return new ResponseEntity<SavingGoal>(HttpStatus.NO_CONTENT);
+	}
 }

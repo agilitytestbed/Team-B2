@@ -15,49 +15,98 @@ public class DBInitializeConfig {
 		try {
 			Connection connection = DatabaseCommunication.connect();
 			Statement statement = connection.createStatement();
-		
+			
+			connection.setAutoCommit(false);
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS transactions (" + 
 					"id integer PRIMARY KEY," +
-					"date integer," +
+					"date integer NOT NULL," +
 					"amount real," + 
-					"description text," +
+					"description text NOT NULL," +
 					"externalIBAN text NOT NULL," +
 					"type text NOT NULL," +
-					"categoryID integer" +
+					"categoryID integer," + 
+					" FOREIGN KEY(categoryID) REFERENCES categories(id) ON DELETE SET NULL" +
 					")");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS categories (" + 
 					"id integer PRIMARY KEY," +
-					"name text" +
+					"name text NOT NULL" +
 					")");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS sessions (" + 
 					"session integer PRIMARY KEY)");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS transactionIds (" + 
-					"session integer," +
-					"id integer" +
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES transactions(id) ON DELETE CASCADE" + 
 					")");
 			
+
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS internalTransactions (" + 
+					"savingGoalId integer," +
+					"transactionId integer," +
+					"PRIMARY KEY(savingGoalId, transactionID)," +
+					"FOREIGN KEY (savingGoalId) REFERENCES savingGoals(id) ON DELETE CASCADE," + 
+					"FOREIGN KEY (transactionId) REFERENCES transactions(id) ON DELETE CASCADE" +
+					")");
+			
+			statement.executeUpdate("CREATE TRIGGER IF NOT EXISTS same_session_check " + 
+					"BEFORE INSERT ON internalTransactions WHEN (EXISTS (SELECT * FROM transactionIds ti, savingGoalIds sgi " + 
+					"WHERE ti.id = New.transactionId " + 
+					"AND sgi.id = New.savingGoalId " + 
+					"AND ti.session != sgi.session)) " + 
+					"BEGIN " + 
+					"    SELECT RAISE(FAIL, \"The transaction and the saving goal are from different sessions\"); " + 
+					"END;");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS categoryIds (" + 
-					"session integer," +
-					"id integer" +
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES categories(id) ON DELETE CASCADE" + 
 					")");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS categoryRuleIds (" + 
-					"session integer," +
-					"id integer" +
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES categoryRules(id) ON DELETE CASCADE" + 
 					")");
 			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS categoryRules (" + 
 					"id integer PRIMARY KEY," +
-					"description text," +
-					"iBAN text," +
-					"type text," +
-					"category_id integer," +
-					"applyOnHistory integer" +
+					"description text NOT NULL," +
+					"iBAN text NOT NULL," +
+					"type text NOT NULL," +
+					"category_id integer NOT NULL," +
+					"applyOnHistory integer NOT NULL" +
 					")");
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS savingGoals (" + 
+					"id integer PRIMARY KEY," +
+					"name text NOT NULL," +
+					"goal real NOT NULL," +
+					"savePerMonth real NOT NULL," +
+					"minBalanceRequired real NOT NULL," +
+					"balance real NOT NULL" +
+					")");
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS savingGoalIds (" + 
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"CONSTRAINT savingGoalId" + 
+					"        FOREIGN KEY (id) " + 
+					"        REFERENCES savingGoals (id) ON DELETE CASCADE " + 
+					")");
+			statement.executeUpdate("PRAGMA foreign_keys = ON");
+			
+			connection.commit();
+			connection.setAutoCommit(true);
 			statement.close();
 			connection.close();
 			System.out.println("Tables initialized!");

@@ -24,6 +24,22 @@ public class Transaction {
 	public Transaction() {
 		
 	}
+	/**
+	 * Constructs an internal transaction with default values
+	 * @param unixTimestamp
+	 * @param amount
+	 */
+	public Transaction(long unixTimestamp, double amount) {
+		String date = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mmX")
+                .withZone(ZoneOffset.UTC)
+                .format(Instant.ofEpochSecond(unixTimestamp));
+		setId(-1);
+		setAmount(amount);
+		setDate(date);
+		setType(TransactionType.withdrawal);
+		setExternalIBAN("");
+		setCategory(null);
+	}
 	
 	public Transaction(int id, long unixTimestamp, double amount,
 			String externalIBAN, String type, Category category) {
@@ -105,6 +121,7 @@ public class Transaction {
 		
 		// if a value is null
 		if (externalIBAN == null || date == null || type == null || description == null) {
+			System.out.println("Null value problem");
 			return false;
 		}
 		
@@ -120,6 +137,7 @@ public class Transaction {
 			DateTimeFormatter timeFormatter = DateTimeFormatter.ISO_DATE_TIME;
 		    timeFormatter.parse(date);
 		} catch (DateTimeParseException e) {
+			System.out.println("Date formatting problem");
 			return false;
 		}
 		
