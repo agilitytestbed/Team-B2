@@ -13,9 +13,13 @@ public class TransactionService {
 		List<Transaction> result = new ArrayList<>();
 		try {
 			while(rs.next()) {
+				int categoryID = rs.getInt("categoryID");
+				if (rs.wasNull()) {
+					categoryID = -1;
+				}
 				result.add(new Transaction(rs.getInt("id"), rs.getLong("date"),
-	            		rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
-	            		DatabaseCommunication.getCategory(rs.getInt("categoryID"))));
+	            		rs.getDouble("amount"), rs.getString("description"), rs.getString("externalIBAN"), rs.getString("type"),
+	            		DatabaseCommunication.getCategory(categoryID)));
 			}
 		} catch (SQLException e) {
 				System.out.println(e.getMessage());

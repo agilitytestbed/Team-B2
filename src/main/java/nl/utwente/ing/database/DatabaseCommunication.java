@@ -1,6 +1,5 @@
 package nl.utwente.ing.database;
 
-import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -8,24 +7,23 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.Instant;
-import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
-import java.util.Set;
 
 import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.Transaction;
 import nl.utwente.ing.model.TransactionType;
+import nl.utwente.ing.service.CategoryRuleService;
+import nl.utwente.ing.service.CategoryService;
+import nl.utwente.ing.service.PaymentRequestService;
 import nl.utwente.ing.service.SavingGoalService;
 import nl.utwente.ing.service.TransactionService;
 
@@ -51,6 +49,15 @@ public class DatabaseCommunication {
 				+ " AND savingGoalId IN (SELECT id FROM savingGoalIds WHERE session = ?)";
 		
 		runPreparedStatementUpdate(sql, savingGoalId, transactionId);
+	}
+	
+	/*
+	 * -------------------- Code for handling payment request transactions --------------------
+	 */
+	public static void addPaymentRequestTransaction(int paymentRequestId, int transactionId) {
+		String sql = "INSERT INTO paymentRequestTransactions (paymentRequestId, transactionId) VALUES (?,?)";
+		
+		runPreparedStatementUpdate(sql, paymentRequestId, transactionId);
 	}
 	
 	/*
@@ -84,6 +91,9 @@ public class DatabaseCommunication {
 	}
 	public static void addSavingGoalId(int sessionID, int id){
 		addId(sessionID, id , "savingGoalIds");
+	}
+	public static void addPaymentRequestId(int sessionID, int id){
+		addId(sessionID, id , "paymentRequestIds");
 	}
 	
 	public static void addSession(int sessionID) {
@@ -190,9 +200,10 @@ public class DatabaseCommunication {
     }
 
 	/**
-	 * Takes the given sql and executes it.
+	 * Takes the given sql query and executes it.
 	 * @param sql
 	 * 			The sql message as a string
+	 * @return resultset containing the result of the query
 	 */
 	public static ResultSet executeSQLQuery(String sql) {
 		try (Connection conn = connect(); 
@@ -202,6 +213,20 @@ public class DatabaseCommunication {
 			System.out.println(e.getMessage());
 		}
 		return null;
+	}
+	
+	/**
+	 * Takes the given sql update and executes it.
+	 * @param sql
+	 * 			The sql message as a string
+	 */
+	public static void runSQLUpdate(String sql) {
+		try (Connection conn = connect(); 
+				Statement stmt = conn.createStatement()) {
+			stmt.executeUpdate(sql);
+		} catch (SQLException e) {
+			System.out.println(e.getMessage());
+		}
 	}
 	
 	
@@ -323,11 +348,7 @@ public class DatabaseCommunication {
 				rs = runPreparedStatementQuery(conn, sql, sessionId, offset, limit);
 			}
 				
-	        while (rs.next()) {
-	        		transactions.add(new Transaction(rs.getInt("id"), rs.getLong("date"),
-	    	            	rs.getDouble("amount"), rs.getString("externalIBAN"), rs.getString("type"),
-	    	            	getCategory(rs.getInt("categoryID"))));
-	        }
+	        	transactions = TransactionService.getTransactions(rs);
 	        return transactions;
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
@@ -346,20 +367,26 @@ public class DatabaseCommunication {
 	 */
 	public static Transaction addTransaction(Transaction t, int sessionId) {
 		
-		// Apply category rule
-		DatabaseCommunication.applyCategoryRule(t, sessionId);
-		
-		// Apply saving goals
-		DatabaseCommunication.applySavingGoals(sessionId, t);
-		
-		String sql = "INSERT INTO transactions(id, date, amount, description, externalIBAN, type) VALUES(?,?,?,?,?,?)";
-		
 		// Generate new id
 		int newId = DatabaseCommunication.getLastTransactionID() + 1;
 		t.setId(newId);
 		
+		// Apply category rule
+		DatabaseCommunication.applyCategoryRule(t, sessionId);
+		
+		
+		
+		String sql = "INSERT INTO transactions(id, date, amount, description, externalIBAN, type) VALUES(?,?,?,?,?,?)";
+		
+		
         runPreparedStatementUpdate(sql, t.getId(), t.returnUnixTimestamp(), t.getAmount(), t.getDescription(),
             	t.getExternalIBAN(), t.getType().toString());
+        
+        // Apply saving goals
+     	DatabaseCommunication.applySavingGoals(t, sessionId);
+        
+        // Apply payment requests
+     	applyPaymentRequests(t, sessionId);
         
         DatabaseCommunication.addTransactionId(sessionId, t.getId());
         
@@ -480,9 +507,7 @@ public class DatabaseCommunication {
 		try (Connection conn = connect()) {
 	        ResultSet rs  = runPreparedStatementQuery(conn, sql, id, sessionId);
 	            
-	        if (rs.next()) {
-	            return new Category(rs.getInt("id"), rs.getString("name"));
-	        }
+	        return CategoryService.getCategory(rs);
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
 	    }
@@ -502,9 +527,7 @@ public class DatabaseCommunication {
 	            
 	        ResultSet rs  = runPreparedStatementQuery(conn, sql, id);
 	            
-	        if (rs.next()) {
-	            return new Category(rs.getInt("id"), rs.getString("name"));
-	        }
+	        return CategoryService.getCategory(rs);
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
 	    }
@@ -544,18 +567,12 @@ public class DatabaseCommunication {
 	 */
 	public static List<CategoryRule> getAllCategoryRules(int sessionId) {
 		List<CategoryRule> categoryRules = new ArrayList<>();
-		
 		String sql = "SELECT * FROM categoryRules WHERE id IN (SELECT id FROM categoryRuleIds WHERE session = ?)";
 		try (Connection conn = connect()) {
 			
 			ResultSet rs  = runPreparedStatementQuery(conn, sql, sessionId);
 			
-	        while (rs.next()) {
-	            categoryRules.add(new CategoryRule(rs.getInt("id"), 
-	            		rs.getString("description"), rs.getString("iBAN"),
-	            		rs.getString("type"), rs.getInt("category_id"), rs.getBoolean("applyOnHistory")
-	            		));
-	        }
+	        categoryRules =  CategoryRuleService.getCategoryRules(rs);
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
 	    }
@@ -600,12 +617,7 @@ public class DatabaseCommunication {
 		try (Connection conn = connect()) {
 	        ResultSet rs  = runPreparedStatementQuery(conn, sql, id, sessionId);
 	            
-	        if (rs.next()) {
-	            return new CategoryRule(rs.getInt("id"), rs.getString("description"),
-	            		rs.getString("iBAN"), rs.getString("type"), rs.getInt("category_id"),
-	            		rs.getBoolean("applyOnHistory")
-	            		);
-	        }
+	        return CategoryRuleService.getCategoryRule(rs);
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
 	    }
@@ -904,7 +916,7 @@ public class DatabaseCommunication {
 	}
 	
 	
-	public static void applySavingGoals(int sessionId , Transaction newTransaction) {
+	public static void applySavingGoals(Transaction newTransaction, int sessionId) {
 		Transaction lastTransaction = getLastTransaction(sessionId);
 		List<ZonedDateTime> crossings = new ArrayList<>();
 		int diff = 0;
@@ -956,6 +968,76 @@ public class DatabaseCommunication {
 		}
 	}
 	
+	public static List<PaymentRequest> getAllPaymentRequests(int sessionId){
+		String sql = "SELECT * FROM paymentRequests WHERE id IN (SELECT id FROM paymentRequestIds WHERE session = ?)";
+
+		try (Connection conn = connect()) {
+	        ResultSet rs  = runPreparedStatementQuery(conn, sql, sessionId);
+	        return PaymentRequestService.getPaymentRequests(rs);
+	    } catch (SQLException e) {
+	        System.out.println(e.getMessage());
+	    }
+		return null;
+	}
+	
+	public static List<Transaction> getTransactionsForPaymentRequest(int paymentRequestId){
+		String sql = "SELECT * FROM transactions WHERE id IN (SELECT transactionId FROM paymentRequestTransactions WHERE paymentRequestId = ?)";
+		try (Connection conn = connect()) {
+	        ResultSet rs  = runPreparedStatementQuery(conn, sql, paymentRequestId);
+	        return TransactionService.getTransactions(rs);
+	    } catch (SQLException e) {
+	        System.out.println(e.getMessage());
+	    }
+		return null;
+	}
+	
+	/**
+	 * Adds the given payment request object to the database.
+	 * @param sg
+	 * 			PaymentRequest object
+	 */
+	public static PaymentRequest addPaymentRequest(PaymentRequest pr, int sessionId) {
+		
+		// Generate new id
+		int newId = DatabaseCommunication.getLastPaymentRequestID() + 1;
+		pr.setId(newId);
+		
+		String sql = "INSERT INTO paymentRequests(id, description, due_date, amount, number_of_requests) VALUES(?,?,?,?,?)";
+        runPreparedStatementUpdate(sql, pr.getId(), pr.getDescription(),
+        		pr.returnUnixTimestamp(), pr.getAmount(), pr.getNumber_of_requests());
+        
+        addPaymentRequestId(sessionId, pr.getId());
+        
+        return pr;
+	}
+	
+	/**
+	 * Go through every payment request and check if it is applicable ( i.e. the amount is right, is not filled and is
+	 * the transaction is before the due date )
+	 * @param t Transaction that is to be added
+	 * @param sessionId
+	 */
+	public static void applyPaymentRequests(Transaction t , int sessionId) {
+		List<PaymentRequest> prList = getAllPaymentRequests(sessionId);
+		
+		for (PaymentRequest pr: prList) {
+			if (t.getType().equals(TransactionType.deposit) && !pr.isFilled() && t.getAmount() == pr.getAmount() && t.returnUnixTimestamp() <= pr.returnUnixTimestamp()) {
+				if (pr.transactionNumber() + 1 == pr.getNumber_of_requests()) {
+					fillPaymentRequest(pr.getId());
+				}
+				addPaymentRequestTransaction(pr.getId(), t.getId());
+				return;
+			}
+		}
+		
+	}
+	
+	public static void fillPaymentRequest(int paymentRequestId) {
+		String sql = "UPDATE paymentRequests SET filled = 1 WHERE id = ?";
+		runPreparedStatementUpdate(sql, paymentRequestId);
+		
+	}
+	
 
 	
 	public static void fillStatementWithParams(PreparedStatement stmt, Object[] params) {
@@ -985,6 +1067,8 @@ public class DatabaseCommunication {
 		}
 	}
 	
+	
+	
 
 
 
@@ -1006,6 +1090,10 @@ public class DatabaseCommunication {
 		return getMaxIndex("savingGoals");
 	}
 	
+	public static int getLastPaymentRequestID() {
+		return getMaxIndex("paymentRequests");
+	}
+	
 	public static void main(String[] args) {
 		/*String sql = "PRAGMA foreign_keys";
         try (Connection conn = connect();
@@ -1015,7 +1103,7 @@ public class DatabaseCommunication {
         } catch (SQLException e) {
         		System.out.println(e.getMessage());
         }*/
-		deleteSavingGoal(2,1);
+		//deleteSavingGoal(2,1);
 	}
 
 

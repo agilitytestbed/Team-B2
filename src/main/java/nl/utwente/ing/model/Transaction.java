@@ -41,7 +41,7 @@ public class Transaction {
 		setCategory(null);
 	}
 	
-	public Transaction(int id, long unixTimestamp, double amount,
+	public Transaction(int id, long unixTimestamp, double amount, String description,
 			String externalIBAN, String type, Category category) {
 		
 		String date = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mmX")
@@ -49,6 +49,7 @@ public class Transaction {
                 .format(Instant.ofEpochSecond(unixTimestamp));
 		setId(id);
 		setAmount(amount);
+		setDescription(description);
 		setDate(date);
 		setType(TransactionType.valueOf(type));
 		setExternalIBAN(externalIBAN);

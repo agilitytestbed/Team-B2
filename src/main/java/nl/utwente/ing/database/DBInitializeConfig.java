@@ -33,6 +33,31 @@ public class DBInitializeConfig {
 					"name text NOT NULL" +
 					")");
 			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS paymentRequests (" + 
+					"id integer PRIMARY KEY," +
+					"description text NOT NULL," +
+					"due_date text NOT NULL," +
+					"amount real NOT NULL," +
+					"number_of_requests integer NOT NULL," +
+					"filled integer NOT NULL DEFAULT 0" +
+					")");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS paymentRequestIds (" + 
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES paymentRequests(id) ON DELETE CASCADE" + 
+					")");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS paymentRequestTransactions (" + 
+					"paymentRequestId integer," +
+					"transactionId integer," +
+					"PRIMARY KEY(paymentRequestId, transactionID)," +
+					"FOREIGN KEY (paymentRequestId) REFERENCES paymentRequests(id) ON DELETE CASCADE," + 
+					"FOREIGN KEY (transactionId) REFERENCES transactions(id) ON DELETE CASCADE" +
+					")");
+			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS sessions (" + 
 					"session integer PRIMARY KEY)");
 			

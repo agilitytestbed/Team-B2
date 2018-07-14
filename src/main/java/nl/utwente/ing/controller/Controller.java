@@ -2,7 +2,6 @@ package nl.utwente.ing.controller;
 
 import java.time.temporal.ChronoUnit;
 import java.util.List;
-import java.util.Set;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -23,6 +22,7 @@ import nl.utwente.ing.database.DatabaseCommunication;
 import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.TimeInterval;
 import nl.utwente.ing.model.Transaction;
@@ -485,5 +485,34 @@ public class Controller {
 		
 		
 		return new ResponseEntity<SavingGoal>(HttpStatus.NO_CONTENT);
+	}
+	
+	// ---------------- Payment Requests -----------------
+	// GET
+	@RequestMapping("/paymentRequests")
+	public List<PaymentRequest> getPaymentRequests(
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		
+		return DatabaseCommunication.getAllPaymentRequests(sessionId);
+	}
+	
+	// POST
+	@RequestMapping(method = RequestMethod.POST, value = "/paymentRequests")
+	public ResponseEntity<PaymentRequest> addPaymentRequest(
+			@RequestBody PaymentRequest paymentRequest,
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		if (paymentRequest == null || !paymentRequest.validPaymentRequest()) {
+			throw new InvalidInputException();
+		}
+		
+		
+		return new ResponseEntity<PaymentRequest>(DatabaseCommunication.addPaymentRequest(paymentRequest, sessionId) ,HttpStatus.CREATED);
 	}
 }
