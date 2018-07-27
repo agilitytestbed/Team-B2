@@ -74,7 +74,7 @@ public class DBInitializeConfig {
 					"savingGoalId integer," +
 					"transactionId integer," +
 					"PRIMARY KEY(savingGoalId, transactionID)," +
-					"FOREIGN KEY (savingGoalId) REFERENCES savingGoals(id) ON DELETE CASCADE," + 
+					"FOREIGN KEY (savingGoalId) REFERENCES savingGoals(id) ON DELETE SET NULL," + 
 					"FOREIGN KEY (transactionId) REFERENCES transactions(id) ON DELETE CASCADE" +
 					")");
 			

@@ -43,6 +43,11 @@ public class DatabaseCommunication {
 		
 		runPreparedStatementUpdate(sql, savingGoalId, transactionId);
 	}
+	public static void addInternalTransactionIdNoSavingGoal(int transactionId) {
+		String sql = "INSERT INTO internalTransactions (transactionId) VALUES (?)";
+		
+		runPreparedStatementUpdate(sql, transactionId);
+	}
 	
 	public static void deleteInternalTransactionId(int savingGoalId, int transactionId, int sessionId) {
 		String sql = "DELETE FROM internalTransactions WHERE savingGoalId = ? AND transactionId = ?"
@@ -419,6 +424,27 @@ public class DatabaseCommunication {
         return t;
 	}
 	
+	public static Transaction addInternalTransactionReturnMoney(double amount, long unixTimestamp, int sessionId) {
+		
+		Transaction t = new Transaction(unixTimestamp, amount);
+		
+		// Generate new id
+		int newId = DatabaseCommunication.getLastTransactionID() + 1;
+		t.setId(newId);
+		
+		
+		String sql = "INSERT INTO transactions(id, date, amount, description, externalIBAN, type) VALUES(?,?,?,?,?,'deposit')";
+	
+        runPreparedStatementUpdate(sql, t.getId(), t.returnUnixTimestamp(), t.getAmount(), t.getDescription(),
+            	t.getExternalIBAN());
+        
+        DatabaseCommunication.addTransactionId(sessionId, t.getId());
+        DatabaseCommunication.addInternalTransactionIdNoSavingGoal(t.getId());
+  
+        
+        return t;
+	}
+	
 	
 	/**
 	 * Updates the transaction with the given id 
@@ -444,7 +470,8 @@ public class DatabaseCommunication {
 	 * 			The id of the transaction to delete
 	 */
 	public static void deleteTransaction(int id, int sessionId) {
-        String sql = "DELETE FROM transactions WHERE id = ? and id IN (SELECT id FROM transactionIds WHERE session = ?)";
+        String sql = "DELETE FROM transactions WHERE id = ? and id IN (SELECT id FROM transactionIds WHERE session = ?) "
+        		+ "AND id NOT IN (SELECT transactionId FROM internalTransactions)";
 	    runPreparedStatementUpdate(sql, id, sessionId); 
 
 	}
@@ -882,7 +909,7 @@ public class DatabaseCommunication {
 	 * 			The id of the saving goal to delete
 	 */
 	public static void deleteSavingGoal(int id, int sessionId) {
-		deleteInternalTransactions(id);
+		returnMoney(id, sessionId);
 		
 		String sql = "DELETE FROM savingGoals WHERE id = ? AND id IN (SELECT id FROM savingGoalIds WHERE session = ?)";
         runPreparedStatementUpdate(sql, id, sessionId);
@@ -891,15 +918,23 @@ public class DatabaseCommunication {
 	}
 	
 	/**
-	 * Deletes all transactions which belong to the given session and saving goal and 
-	 * are internal.
+	 * Returns the money for all internal transactions in a saving goal.
 	 * @param savingGoalId id of the saving goal the internal transactions belong to
 	 * @param sessionId id of the session to which the transactions belong
 	 */
-	public static void deleteInternalTransactions(int savingGoalId) {
-		String sql = "DELETE FROM transactions WHERE id IN"
+	public static void returnMoney(int savingGoalId, int sessionId) {
+		List<Transaction> internalTransactions = new ArrayList<>();
+		Instant now = Instant.now();
+		String sql = "SELECT * FROM transactions WHERE id IN "
 				+ " (SELECT transactionId FROM internalTransactions WHERE savingGoalId = ?)";
-		runPreparedStatementUpdate(sql, savingGoalId);
+		try (Connection conn = connect()){
+			internalTransactions = TransactionService.getTransactions(runPreparedStatementQuery(conn, sql, savingGoalId));
+		} catch (SQLException e) {
+			System.out.println(e.getMessage());
+		}
+		for (Transaction t: internalTransactions) {
+			addInternalTransactionReturnMoney(t.getAmount(), now.getEpochSecond(), sessionId);
+		}
 	}
 	
 	/**
