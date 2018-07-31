@@ -36,7 +36,7 @@ public class DBInitializeConfig {
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS paymentRequests (" + 
 					"id integer PRIMARY KEY," +
 					"description text NOT NULL," +
-					"due_date text NOT NULL," +
+					"due_date integer NOT NULL," +
 					"amount real NOT NULL," +
 					"number_of_requests integer NOT NULL," +
 					"filled integer NOT NULL DEFAULT 0" +
@@ -111,6 +111,7 @@ public class DBInitializeConfig {
 					"category_id integer NOT NULL," +
 					"applyOnHistory integer NOT NULL" +
 					")");
+			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS savingGoals (" + 
 					"id integer PRIMARY KEY," +
 					"name text NOT NULL," +
@@ -119,6 +120,7 @@ public class DBInitializeConfig {
 					"minBalanceRequired real NOT NULL," +
 					"balance real NOT NULL" +
 					")");
+			
 			statement.executeUpdate("CREATE TABLE IF NOT EXISTS savingGoalIds (" + 
 					"session integer NOT NULL," +
 					"id integer NOT NULL, " +
@@ -127,6 +129,21 @@ public class DBInitializeConfig {
 					"CONSTRAINT savingGoalId" + 
 					"        FOREIGN KEY (id) " + 
 					"        REFERENCES savingGoals (id) ON DELETE CASCADE " + 
+					")");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS messages (" + 
+					"id integer PRIMARY KEY," +
+					"message text NOT NULL," +
+					"date integer NOT NULL," +
+					"read integer NOT NULL DEFAULT 0," +
+					"type text NOT NULL)");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS messageIds (" + 
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES messages(id) ON DELETE CASCADE" + 
 					")");
 			statement.executeUpdate("PRAGMA foreign_keys = ON");
 			

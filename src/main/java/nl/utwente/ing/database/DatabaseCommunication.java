@@ -17,12 +17,15 @@ import java.util.ListIterator;
 import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.Message;
+import nl.utwente.ing.model.MessageType;
 import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.Transaction;
 import nl.utwente.ing.model.TransactionType;
 import nl.utwente.ing.service.CategoryRuleService;
 import nl.utwente.ing.service.CategoryService;
+import nl.utwente.ing.service.MessageService;
 import nl.utwente.ing.service.PaymentRequestService;
 import nl.utwente.ing.service.SavingGoalService;
 import nl.utwente.ing.service.TransactionService;
@@ -94,11 +97,17 @@ public class DatabaseCommunication {
 	public static void addCategoryRuleId(int sessionID, int id){
 		addId(sessionID, id , "categoryRuleIds");
 	}
+	
 	public static void addSavingGoalId(int sessionID, int id){
 		addId(sessionID, id , "savingGoalIds");
 	}
+	
 	public static void addPaymentRequestId(int sessionID, int id){
 		addId(sessionID, id , "paymentRequestIds");
+	}
+	
+	public static void addMessageId(int sessionID, int id){
+		addId(sessionID, id , "messageIds");
 	}
 	
 	public static void addSession(int sessionID) {
@@ -284,6 +293,30 @@ public class DatabaseCommunication {
 	}
 	
 	/**
+	 * Gets the first transaction from the database
+	 * @param id
+	 * 			Id of the transaction
+	 * @return
+	 * 			Transaction object from the database
+	 */
+	public static Transaction getFirstTransaction(int sessionId) {
+		String sql = "SELECT * FROM transactions WHERE id IN (SELECT id FROM transactionIds WHERE session = ?)  ORDER BY date ASC LIMIT 1";
+
+		try (Connection conn = connect()) {
+	        ResultSet rs  = runPreparedStatementQuery(conn, sql, sessionId);
+	        
+	        List<Transaction> transactions = TransactionService.getTransactions(rs);
+	        
+	        if (transactions.size() == 1) {
+	            return transactions.get(0);
+	        }
+	    } catch (SQLException e) {
+	        System.out.println(e.getMessage());
+	    }
+		return null;
+	}
+	
+	/**
 	 * Returns whether the transaction with the given id exists in the database
 	 * @param id
 	 * 			Integer representing the id of the transaction to query
@@ -362,6 +395,18 @@ public class DatabaseCommunication {
 		
 	}
 	
+	public static List<Transaction> getAllTransactions(int sessionId){
+		String sql = "SELECT * FROM transactions WHERE id IN (SELECT id FROM transactionIds WHERE session = ?)";
+		
+		try (Connection conn = connect()){
+			return TransactionService.getTransactions(runPreparedStatementQuery(conn, sql, sessionId));
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
+		return null;
+	}
+	
 
 	
 	
@@ -394,6 +439,9 @@ public class DatabaseCommunication {
      	applyPaymentRequests(t, sessionId);
         
         DatabaseCommunication.addTransactionId(sessionId, t.getId());
+        
+        // Check if the balance goes negative
+        applyMessages(sessionId, t.returnUnixTimestamp());
         
         return t;
 	}
@@ -786,25 +834,32 @@ public class DatabaseCommunication {
 		// for each interval, get transactions and generate candlestick data points
 		for (ZonedDateTime z: zdt) {
 			List<Transaction> transactions = getAllTransactionsAtInterval(sessionId, z, time);
-			double volume = 0;
 			double open = getBalanceAtIntervalStart(sessionId, z);
-			double close = open;
-			double high = open;
-			double low = open;
-			for (Transaction t: transactions) {
-				if (t.getType().equals(TransactionType.deposit)) {
-					close += t.getAmount();
-				} else {
-					close -= t.getAmount();
-				}
-				volume+= t.getAmount();
-				high = Math.max(close, high);
-				low = Math.min(close, low);
-			}
-			result.add(new CandleStick(open, close, high, low, volume, z.toEpochSecond()));
+			result.add(getCandlestick(transactions, open, z));
 		}
 		
 		return result;
+	}
+	
+	public static CandleStick getCandlestick(List<Transaction> transactions, double open, ZonedDateTime z) {
+		double close = open;
+		double volume = 0;
+		double high = open;
+		double low = open;
+		for (Transaction t: transactions) {
+			if (t.getType().equals(TransactionType.deposit)) {
+				close += t.getAmount();
+			} else {
+				close -= t.getAmount();
+			}
+			volume+= t.getAmount();
+			high = Math.max(close, high);
+			low = Math.min(close, low);
+		}
+		if (z == null) {
+			z = ZonedDateTime.ofInstant(Instant.now(), ZoneOffset.UTC);
+		}
+		return new CandleStick(open, close, high, low, volume, z.toEpochSecond());
 	}
 	/**
 	 * Gets the balance of the account at the start of an interval
@@ -937,6 +992,7 @@ public class DatabaseCommunication {
 		}
 	}
 	
+	
 	/**
 	 * Updates the saving goal balance with the given id 
 	 * @param t
@@ -994,6 +1050,12 @@ public class DatabaseCommunication {
 					// Add an internal transaction to put money aside for the goal
 					addInternalTransaction(perMonth, crossings.get(i).toEpochSecond(), sessionId, sg.getId());
 					
+					// If the saving goal is met, add a message
+					if (sgBalance + perMonth == sg.getGoal()) {
+						String msg = "Saving goal with id " + sg.getId() + " has been filled!";
+						addMessage(msg, MessageType.info, newTransaction.returnUnixTimestamp(), sessionId);
+					}
+					
 
 					sg.setBalance(sgBalance + perMonth);
 					updateSavingGoalBalance(sg, sg.getId(), sessionId);
@@ -1012,6 +1074,18 @@ public class DatabaseCommunication {
 	    } catch (SQLException e) {
 	        System.out.println(e.getMessage());
 	    }
+		return null;
+	}
+	
+	public static List<PaymentRequest> getAllUnfilledAndExpiredPaymentRequests(int sessionId, long unixTimestamp){
+		String sql = "SELECT * FROM paymentRequests WHERE id IN (SELECT id FROM paymentRequestIds WHERE session = ?) AND due_date < ? AND filled = 0";
+		
+		try(Connection conn = connect()){
+			return PaymentRequestService.getPaymentRequests(runPreparedStatementQuery(conn, sql, sessionId, unixTimestamp));
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
 		return null;
 	}
 	
@@ -1059,6 +1133,8 @@ public class DatabaseCommunication {
 			if (t.getType().equals(TransactionType.deposit) && !pr.isFilled() && t.getAmount() == pr.getAmount() && t.returnUnixTimestamp() <= pr.returnUnixTimestamp()) {
 				if (pr.transactionNumber() + 1 == pr.getNumber_of_requests()) {
 					fillPaymentRequest(pr.getId());
+					String msg = "Payment request with id " + pr.getId() + " filled!";
+					addMessage(msg, MessageType.info, t.returnUnixTimestamp(), sessionId);
 				}
 				addPaymentRequestTransaction(pr.getId(), t.getId());
 				return;
@@ -1067,11 +1143,118 @@ public class DatabaseCommunication {
 		
 	}
 	
+	
+	public static List<Message> getAllUnreadMessages(int sessionId){
+		String sql = "SELECT * FROM messages WHERE id IN (SELECT id FROM messageIds WHERE session = ?) AND read = 0";
+		try(Connection conn = connect()){
+			return MessageService.getMessages(runPreparedStatementQuery(conn, sql, sessionId));
+		} catch (SQLException e) {
+			System.out.println("Error getting all messages, sql error: " + e.getMessage());
+		}
+		
+		return null;
+	}
+	
+	/**
+	 * Check if a message with the given id exists in a session.
+	 * @param sessionId
+	 * @param messageId
+	 * @return boolean true if exists, false otherwise
+	 */
+	public static boolean messageExists(int sessionId, int messageId) {
+		String sql = "SELECT * FROM messages WHERE id IN (SELECT id FROM messageIds WHERE session = ?) AND id = ?";
+		
+		try(Connection conn = connect()) {
+			ResultSet rs = runPreparedStatementQuery(conn, sql, sessionId, messageId);
+			if (rs.next()) {
+				return true;
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return false;
+	}
+	
+	public static boolean messageWithBalanceHighExists(int sessionId) {
+		String sql = "SELECT * FROM messages WHERE id IN (SELECT id FROM messageIds WHERE session = ?) AND message LIKE ? AND read = 0";
+		
+		try(Connection conn = connect()) {
+			ResultSet rs = runPreparedStatementQuery(conn, sql, sessionId, "Your balance reached a new high%");
+			if (rs.next()) {
+				return true;
+			}
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return false;
+	}
+	
+	public static void addMessage(String message, MessageType type, long unixTimestamp, int sessionId) {
+		// Generate new id
+		int newId = DatabaseCommunication.getLastMessageID() + 1;
+		
+		
+		String sql = "INSERT INTO messages(id, message, date, type) VALUES(?,?,?,?)";
+		
+		runPreparedStatementUpdate(sql, newId, message, unixTimestamp, type.toString());
+		
+		addMessageId(sessionId, newId);
+	}
+	
+	public static void readMessage(int sessionId, int messageId) {
+		String sql = "UPDATE messages SET read = 1 WHERE id IN (SELECT id FROM messageIds WHERE session = ?) AND id = ?";
+		runPreparedStatementUpdate(sql, sessionId, messageId);
+	}
+	
 	public static void fillPaymentRequest(int paymentRequestId) {
 		String sql = "UPDATE paymentRequests SET filled = 1 WHERE id = ?";
 		runPreparedStatementUpdate(sql, paymentRequestId);
+
 		
 	}
+	
+	/**
+	 * Performs checks and adds messages whenever is the case
+	 * @param sessionId Id of the session for which checks are made
+	 */
+	public static void applyMessages(int sessionId, long unixTimestamp) {
+		double bal = getBalance(sessionId);
+		
+		if (bal < 0) {
+			String msg = "Balance dropped below zero!";
+			addMessage(msg, MessageType.warning, unixTimestamp, sessionId);
+		}
+		
+		Transaction first = getFirstTransaction(sessionId);
+		Transaction last = getLastTransaction(sessionId);
+		
+		// If there is at least one transaction
+		if (first != null) {
+			ZonedDateTime firstDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(first.returnUnixTimestamp()), ZoneOffset.UTC);
+			ZonedDateTime lastDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(last.returnUnixTimestamp()), ZoneOffset.UTC);
+			// If there is at least 3 months of data available
+			if (getMonthDiff(firstDate, lastDate) >= 3) {
+				List<Transaction> allTransactions = getAllTransactions(sessionId);
+				double maxAmount = getCandlestick(allTransactions, 0, null).getHigh();
+				// If there isn't already an unread message about the new high of the balance
+				if (!messageWithBalanceHighExists(sessionId)) {
+					// Generate an info message and add it
+					String msg = "Your balance reached a new high of " + maxAmount + "!";
+					addMessage(msg, MessageType.info, unixTimestamp, sessionId);
+				}
+			}
+		}
+		
+		// Add a warning for every payment request not filled on time
+		List<PaymentRequest> paymentRequests = getAllUnfilledAndExpiredPaymentRequests(sessionId, unixTimestamp);
+		for (PaymentRequest pr: paymentRequests) {
+			String msg = "Payment request with id " + pr.getId() + " has not been filled on time!";
+			addMessage(msg, MessageType.warning, unixTimestamp, sessionId);
+		}
+	}
+	
+	
+	
 	
 
 	
@@ -1102,13 +1285,29 @@ public class DatabaseCommunication {
 		}
 	}
 	
-	
+	private static int getMonthDiff(ZonedDateTime t1, ZonedDateTime t2) {
+		ZonedDateTime earlier;
+		ZonedDateTime later;
+		if (t1.isAfter(t2)) {
+			later = t1;
+			earlier = t2;
+		} else {
+			later = t2;
+			earlier = t1;
+		}
+		return Math.max((later.getYear() - earlier.getYear()) * 12 +  
+				   (later.getMonthValue() - earlier.getMonthValue()), 0);
+	}
 	
 
 
 
 	public static int getLastTransactionID() {
 		return getMaxIndex("transactions");
+	}
+	
+	public static int getLastMessageID() {
+		return getMaxIndex("messages");
 	}
 
 

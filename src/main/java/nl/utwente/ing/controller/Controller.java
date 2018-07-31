@@ -22,6 +22,7 @@ import nl.utwente.ing.database.DatabaseCommunication;
 import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
+import nl.utwente.ing.model.Message;
 import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.TimeInterval;
@@ -514,5 +515,35 @@ public class Controller {
 		
 		
 		return new ResponseEntity<PaymentRequest>(DatabaseCommunication.addPaymentRequest(paymentRequest, sessionId) ,HttpStatus.CREATED);
+	}
+	
+	// ---------------- User Messages -----------------
+	// GET
+	@RequestMapping("/messages")
+	public List<Message> getUserMessages(
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		
+		return DatabaseCommunication.getAllUnreadMessages(sessionId);
+	}
+	
+	// PUT
+	@RequestMapping(method = RequestMethod.PUT, value = "/messages/{id}", consumes = "*")
+	public HttpStatus readMessage(
+			@RequestParam(value="session_id", required =false) String session_id,
+			@PathVariable int id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		
+		if (!DatabaseCommunication.messageExists(sessionId, id)) {
+			throw new ItemNotFound();
+		}
+		
+		DatabaseCommunication.readMessage(sessionId, id);
+		
+		return HttpStatus.OK;
 	}
 }
