@@ -417,6 +417,9 @@ public class DatabaseCommunication {
 	 */
 	public static Transaction addTransaction(Transaction t, int sessionId) {
 		
+		// Get all transactions that were added before this one
+		List<Transaction> previousTransactions = getAllTransactions(sessionId);
+		
 		// Generate new id
 		int newId = DatabaseCommunication.getLastTransactionID() + 1;
 		t.setId(newId);
@@ -441,7 +444,7 @@ public class DatabaseCommunication {
         DatabaseCommunication.addTransactionId(sessionId, t.getId());
         
         // Check if the balance goes negative
-        applyMessages(sessionId, t.returnUnixTimestamp());
+        applyMessages(sessionId, t, previousTransactions);
         
         return t;
 	}
@@ -1217,8 +1220,9 @@ public class DatabaseCommunication {
 	 * Performs checks and adds messages whenever is the case
 	 * @param sessionId Id of the session for which checks are made
 	 */
-	public static void applyMessages(int sessionId, long unixTimestamp) {
+	public static void applyMessages(int sessionId, Transaction newTransaction, List<Transaction> previousTransactions) {
 		double bal = getBalance(sessionId);
+		long unixTimestamp = newTransaction.returnUnixTimestamp();
 		
 		if (bal < 0) {
 			String msg = "Balance dropped below zero!";
@@ -1226,20 +1230,19 @@ public class DatabaseCommunication {
 		}
 		
 		Transaction first = getFirstTransaction(sessionId);
-		Transaction last = getLastTransaction(sessionId);
 		
 		// If there is at least one transaction
 		if (first != null) {
 			ZonedDateTime firstDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(first.returnUnixTimestamp()), ZoneOffset.UTC);
-			ZonedDateTime lastDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(last.returnUnixTimestamp()), ZoneOffset.UTC);
+			ZonedDateTime lastDate = ZonedDateTime.ofInstant(Instant.ofEpochSecond(unixTimestamp), ZoneOffset.UTC);
 			// If there is at least 3 months of data available
-			if (getMonthDiff(firstDate, lastDate) >= 3) {
-				List<Transaction> allTransactions = getAllTransactions(sessionId);
-				double maxAmount = getCandlestick(allTransactions, 0, null).getHigh();
+			if (getMonthDiff(firstDate, lastDate) >= 3 && newTransaction.getType().equals(TransactionType.deposit)) {
+
+				double maxBefore = getCandlestick(previousTransactions, 0, null).getHigh();
 				// If there isn't already an unread message about the new high of the balance
-				if (!messageWithBalanceHighExists(sessionId)) {
+				if (!messageWithBalanceHighExists(sessionId) && bal > maxBefore) {
 					// Generate an info message and add it
-					String msg = "Your balance reached a new high of " + maxAmount + "!";
+					String msg = "Your balance reached a new high of " + bal + "!";
 					addMessage(msg, MessageType.info, unixTimestamp, sessionId);
 				}
 			}
