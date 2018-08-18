@@ -18,6 +18,7 @@ import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
 import nl.utwente.ing.model.Message;
+import nl.utwente.ing.model.MessageRule;
 import nl.utwente.ing.model.MessageType;
 import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
@@ -25,6 +26,7 @@ import nl.utwente.ing.model.Transaction;
 import nl.utwente.ing.model.TransactionType;
 import nl.utwente.ing.service.CategoryRuleService;
 import nl.utwente.ing.service.CategoryService;
+import nl.utwente.ing.service.MessageRuleService;
 import nl.utwente.ing.service.MessageService;
 import nl.utwente.ing.service.PaymentRequestService;
 import nl.utwente.ing.service.SavingGoalService;
@@ -108,6 +110,10 @@ public class DatabaseCommunication {
 	
 	public static void addMessageId(int sessionID, int id){
 		addId(sessionID, id , "messageIds");
+	}
+	
+	public static void addMessageRuleId(int sessionID, int id){
+		addId(sessionID, id , "messageRuleIds");
 	}
 	
 	public static void addSession(int sessionID) {
@@ -416,6 +422,8 @@ public class DatabaseCommunication {
 	 * 			Transaction object
 	 */
 	public static Transaction addTransaction(Transaction t, int sessionId) {
+
+		boolean isInTheFuture = isTransactionInTheFuture(sessionId, t);
 		
 		// Get all transactions that were added before this one
 		List<Transaction> previousTransactions = getAllTransactions(sessionId);
@@ -429,11 +437,11 @@ public class DatabaseCommunication {
 		
 		
 		
-		String sql = "INSERT INTO transactions(id, date, amount, description, externalIBAN, type) VALUES(?,?,?,?,?,?)";
+		String sql = "INSERT INTO transactions(id, date, amount, description, externalIBAN, type, categoryID) VALUES(?,?,?,?,?,?,?)";
 		
 		
         runPreparedStatementUpdate(sql, t.getId(), t.returnUnixTimestamp(), t.getAmount(), t.getDescription(),
-            	t.getExternalIBAN(), t.getType().toString());
+            	t.getExternalIBAN(), t.getType().toString(), t.CategoryID() == -1 ? null : t.CategoryID());
         
         // Apply saving goals
      	DatabaseCommunication.applySavingGoals(t, sessionId);
@@ -443,8 +451,11 @@ public class DatabaseCommunication {
         
         DatabaseCommunication.addTransactionId(sessionId, t.getId());
         
-        // Check if the balance goes negative
-        applyMessages(sessionId, t, previousTransactions);
+        if (isInTheFuture) {
+	        // Apply messages
+	        applyMessages(sessionId, t, previousTransactions);
+	        applyMessageRules(sessionId, t);
+        }
         
         return t;
 	}
@@ -1256,7 +1267,82 @@ public class DatabaseCommunication {
 		}
 	}
 	
+	public static MessageRule addMessageRule(MessageRule mr, int sessionId) {
+		// Generate new id
+		int newId = DatabaseCommunication.getLastMessageRuleID() + 1;
+		mr.setId(newId);
+		
+		String sql = "INSERT INTO messageRules VALUES(?,?,?,?)";
+        runPreparedStatementUpdate(sql, mr.getId(), mr.getType(), mr.getValue(), mr.getCategory_id());
+        
+        DatabaseCommunication.addMessageRuleId(sessionId, mr.getId());
+        
+        return mr;
+	}
 	
+	public static List<MessageRule> getMessageRules(int sessionId){
+		String sql = "SELECT * FROM messageRules WHERE id IN (SELECT id FROM messageRuleIds WHERE session = ?)";
+		Connection conn = connect();
+		try {
+			return MessageRuleService.getMessageRules(runPreparedStatementQuery(conn, sql, sessionId));
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+	/**
+	 * Goes through every message rule and if the spending for a category exceeds a threshold,
+	 * add a corresponding message.
+	 * @param sessionId id of the session
+	 * @param newTransaction transaction that was last added
+	 */
+	public static void applyMessageRules(int sessionId, Transaction newTransaction) {
+		List<MessageRule> messageRules = getMessageRules(sessionId);
+		
+		for (MessageRule mr : messageRules) {
+			double spending = getCategorySpending(sessionId, mr.getCategory_id(), newTransaction.returnUnixTimestamp(), 30);
+			if (spending >= mr.getValue()) {
+				String msg = "Spending exceeded threshold of " + mr.getValue() + " on category with id " + mr.getCategory_id() + ".";
+				addMessage(msg, mr.getType(), newTransaction.returnUnixTimestamp(), sessionId);
+			}
+		}
+	}
+	
+	/**
+	 * Returns if the transaction is in the future, meaning that it is after the previous last transaction.
+	 * @param sessionId id of the session
+	 * @param newTransaction transaction that is last added
+	 * @return true if transaction is in the future, false otherwise
+	 */
+	public static boolean isTransactionInTheFuture(int sessionId, Transaction newTransaction) {
+		Transaction lastTransaction = getLastTransaction(sessionId);
+		if (lastTransaction == null || newTransaction.returnUnixTimestamp() >= lastTransaction.returnUnixTimestamp()) {
+			return true;
+		}
+		return false;
+	}
+	
+	/**
+	 * Returns the amount of money that was withdrawn from the account in a given period for a category in a session.
+	 * @param sessionId id of the session
+	 * @param categoryId id of the category to monitor spending for
+	 * @param latestTransactionTime time of the latest transaction in the system
+	 * @param nrDays number of days before the latest transaction to start monitoring
+	 * @return amount of the amount of money spend on a category in the given number of days
+	 */
+	public static double getCategorySpending(int sessionId, int categoryId, long latestTransactionTime, int nrDays) {
+		String sql = "SELECT sum(amount) as spending FROM transactions WHERE id IN (SELECT id FROM transactionIds WHERE session = ?) AND categoryID = ? AND "
+				+ "type = 'withdrawal' AND date >= ? AND date <= ?";
+		try (Connection conn = connect()) {
+			ResultSet rs = runPreparedStatementQuery(conn, sql, sessionId, categoryId,
+					ZonedDateTime.ofInstant(Instant.ofEpochSecond(latestTransactionTime), ZoneOffset.UTC).minus(nrDays, ChronoUnit.DAYS).toEpochSecond(), latestTransactionTime);
+			return rs.getDouble("spending");
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		return 0;
+	}
 	
 	
 
@@ -1329,6 +1415,10 @@ public class DatabaseCommunication {
 	
 	public static int getLastPaymentRequestID() {
 		return getMaxIndex("paymentRequests");
+	}
+	
+	public static int getLastMessageRuleID() {
+		return getMaxIndex("messageRules");
 	}
 	
 	public static void main(String[] args) {

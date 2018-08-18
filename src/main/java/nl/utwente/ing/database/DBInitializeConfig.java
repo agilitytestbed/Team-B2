@@ -145,6 +145,21 @@ public class DBInitializeConfig {
 					"FOREIGN KEY (session) REFERENCES sessions(session)," +
 					"FOREIGN KEY (id) REFERENCES messages(id) ON DELETE CASCADE" + 
 					")");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS messageRules (" + 
+					"id integer PRIMARY KEY," +
+					"type text NOT NULL," +
+					"value real NOT NULL," +
+					"category_id integer NOT NULL)");
+			
+			statement.executeUpdate("CREATE TABLE IF NOT EXISTS messageRuleIds (" + 
+					"session integer NOT NULL," +
+					"id integer NOT NULL, " +
+					"PRIMARY KEY (session,id)," +
+					"FOREIGN KEY (session) REFERENCES sessions(session)," +
+					"FOREIGN KEY (id) REFERENCES messageRules(id) ON DELETE CASCADE" + 
+					")");
+			
 			statement.executeUpdate("PRAGMA foreign_keys = ON");
 			
 			connection.commit();

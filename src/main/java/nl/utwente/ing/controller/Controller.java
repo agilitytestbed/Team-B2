@@ -23,6 +23,7 @@ import nl.utwente.ing.model.CandleStick;
 import nl.utwente.ing.model.Category;
 import nl.utwente.ing.model.CategoryRule;
 import nl.utwente.ing.model.Message;
+import nl.utwente.ing.model.MessageRule;
 import nl.utwente.ing.model.PaymentRequest;
 import nl.utwente.ing.model.SavingGoal;
 import nl.utwente.ing.model.TimeInterval;
@@ -545,5 +546,23 @@ public class Controller {
 		DatabaseCommunication.readMessage(sessionId, id);
 		
 		return HttpStatus.OK;
+	}
+	
+	// ---------------- Message rules -----------------
+	// POST
+	@RequestMapping(method = RequestMethod.POST, value = "/messageRules")
+	public ResponseEntity<MessageRule> addMessageRule(
+			@RequestBody MessageRule messageRule,
+			@RequestParam(value="session_id", required =false) String session_id,
+			@RequestHeader(value = "X-session-ID", required=false) String X_session_ID) {
+		
+		int sessionId = Integer.parseInt(checkSession(X_session_ID, session_id));
+		
+		if (messageRule == null || !messageRule.validMessageRule()) {
+			throw new InvalidInputException();
+		}
+		
+		
+		return new ResponseEntity<MessageRule>(DatabaseCommunication.addMessageRule(messageRule, sessionId) ,HttpStatus.CREATED);
 	}
 }
